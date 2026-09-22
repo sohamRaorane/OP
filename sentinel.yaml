@@ -1,0 +1,124 @@
+sentinel:
+  mode: gated  # gated | advisory | strict
+  max_agent_retries: 3
+  max_diff_size: 5242880  # 5 MB
+  max_file_size: 1048576  # 1 MB
+  max_output_size: 1048576  # 1 MB per validator
+
+  validation:
+    enabled: true
+    timeout: 120  # seconds per validator
+    allowlist:
+      - pytest
+      - ruff
+      - mypy
+      - python -m pytest
+      - python -m ruff
+      - python -m mypy
+    python:
+      pytest: true
+      ruff: true
+      mypy: true
+    # Future validators (disabled by default, enable via config):
+    # npm: false
+    # tsc: false
+    # gradle: false
+
+  sandbox:
+    enabled: true
+    image: python:3.12-slim
+    cpu_limit: 1.0  # CPUs
+    memory_limit: 512m
+    timeout: 180
+    network_disabled: true
+    # Fallback subprocess — only for development/testing, never production
+    fallback_enabled: false
+    allowed_env:
+      - PATH
+      - PYTHONPATH
+      - HOME
+      - LANG
+
+  security:
+    enabled: true
+    max_findings: 100
+
+  jev:
+    enabled: false  # mock until real credentials
+    timeout: 30
+    max_retries: 2
+    provider: mock  # mock | http
+
+  risk:
+    # Scoring weights — explainable, replaceable
+    weights:
+      validation_failure: 30
+      security_critical: 50
+      security_high: 30
+      jev_concern: 20
+      large_scope: 10
+      sensitive_files: 15
+
+  approval:
+    required_for: [HIGH, CRITICAL]
+    expiration_hours: 24
+
+policies:
+  # Examples — precedence is order listed (first wins for same trigger)
+  critical_security:
+    when:
+      security_severity: CRITICAL
+    action: BLOCK
+    description: "Critical security finding → block"
+
+  high_security_review:
+    when:
+      security_severity: HIGH
+    action: REQUIRE_HUMAN_REVIEW
+    description: "High security finding → human review"
+
+  build_failure:
+    when:
+      validation_status: FAIL
+      validator: build
+    action: REJECT
+    description: "Build failure → reject"
+
+  test_failure:
+    when:
+      validation_status: FAIL
+      validator: pytest
+    action: REVISE
+    description: "Test failure → revise"
+
+  lint_failure:
+    when:
+      validation_status: FAIL
+      validator: ruff
+    action: REVISE
+    description: "Lint failure → revise"
+
+  type_failure:
+    when:
+      validation_status: FAIL
+      validator: mypy
+    action: REVISE
+    description: "Type check failure → revise"
+
+  database_migration:
+    when:
+      migration_detected: true
+    action: REQUIRE_HUMAN_REVIEW
+    description: "Migration → human review"
+
+  auth_change:
+    when:
+      file_pattern: "**/auth*"
+    action: REQUIRE_HUMAN_REVIEW
+    description: "Auth change → human review"
+
+  huge_change:
+    when:
+      file_count_gt: 20
+    action: REQUIRE_HUMAN_REVIEW
+    description: "Huge change → human review"

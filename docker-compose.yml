@@ -1,0 +1,41 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      SENTINEL_ENV: production
+      DATABASE_URL: postgresql+psycopg://sentinel:sentinel@db:5432/sentinel
+      LOG_LEVEL: INFO
+      SENTINEL_MODE: gated
+      DOCKER_ENABLED: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel
+      POSTGRES_DB: sentinel
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Validation sandbox uses ephemeral containers — no persistent service needed.
+  # Image is pulled on demand: python:3.12-slim, node:20-slim etc.
+
+volumes:
+  postgres_data:
