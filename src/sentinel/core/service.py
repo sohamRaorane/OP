@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+import structlog
+
 from sentinel.agents.base import AgentFeedback
 from sentinel.approval.service import ApprovalService
 from sentinel.audit.service import AuditService
@@ -15,13 +17,16 @@ from sentinel.core.models.security import SecurityFinding
 from sentinel.core.models.validation import ValidationResult
 from sentinel.decision.engine import DecisionEngine
 from sentinel.git.repository import GitRepository
-from sentinel.jev.client import JevContextBuilder
+from sentinel.jev.client import JevClient, JevContextBuilder
 from sentinel.jev.mock import MockJevClient
+from sentinel.jev.openrouter import OpenRouterJevClient
 from sentinel.jev.service import JevDecisionService
 from sentinel.policy.engine import PolicyEngine
 from sentinel.risk.engine import RiskEngine
 from sentinel.security.engine import SecurityAnalyzer
 from sentinel.validation.engine import ValidationRunner
+
+logger = structlog.get_logger(__name__)
 
 
 class SentinelService:
@@ -32,13 +37,28 @@ class SentinelService:
         self.git = GitRepository(settings=self.settings)
         self.validation = ValidationRunner(settings=self.settings)
         self.security = SecurityAnalyzer()
-        self.jev_client = MockJevClient()
-        self.jev_service = JevDecisionService(client=self.jev_client)
+        self.jev_client = self._build_jev_client()
+        self.jev_service = JevDecisionService(client=self.jev_client, timeout=self.settings.jev_timeout)
         self.risk = RiskEngine()
         self.policy = PolicyEngine()
         self.decision = DecisionEngine()
         self.approval = ApprovalService()
         self.audit = AuditService()
+
+    def _build_jev_client(self) -> JevClient:
+        """Real Jev when JEV_ENABLED + key present; mock otherwise (tests/dev stay offline)."""
+        s = self.settings
+        if s.jev_enabled and s.jev_api_key:
+            logger.info("jev_client_selected", provider="openrouter", model=s.jev_model)
+            return OpenRouterJevClient(
+                api_key=s.jev_api_key,
+                api_url=s.jev_api_url,
+                model=s.jev_model,
+                timeout=float(s.jev_timeout),
+            )
+        if s.jev_enabled and not s.jev_api_key:
+            logger.warning("jev_enabled_without_key", fallback="mock")
+        return MockJevClient()
 
     async def verify(
         self,
@@ -48,7 +68,8 @@ class SentinelService:
     ) -> dict:
         """Full verification pipeline — returns all artifacts."""
         repo_path = Path(repo_path).resolve()
-        self.jev_client.set_fixture(jev_fixture)
+        if isinstance(self.jev_client, MockJevClient):
+            self.jev_client.set_fixture(jev_fixture)
 
         # Discover
         repo = self.git.discover(repo_path)

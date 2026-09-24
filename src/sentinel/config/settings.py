@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     jev_api_url: str | None = Field(default=None)
     jev_enabled: bool = Field(default=False)
     jev_timeout: int = Field(default=30)
+    jev_model: str = Field(default="typesafe/jev-1.13")
 
     # API
     api_host: str = Field(default="0.0.0.0")
