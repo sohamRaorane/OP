@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -13,40 +12,40 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore", populate_by_name=True)
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore", case_sensitive=False)
 
     # Environment
-    sentinel_env: Literal["development", "production", "testing"] = Field(default="development", alias="SENTINEL_ENV")
-    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    sentinel_env: Literal["development", "production", "testing"] = Field(default="development")
+    log_level: str = Field(default="INFO")
 
     # Database
-    database_url: str = Field(default="sqlite:///./sentinel.db", alias="DATABASE_URL")
+    database_url: str = Field(default="sqlite:///./sentinel.db")
 
     # Sentinel core
-    sentinel_mode: Literal["gated", "advisory", "strict"] = Field(default="gated", alias="SENTINEL_MODE")
-    max_retries: int = Field(default=3, alias="SENTINEL_MAX_RETRIES")
-    max_diff_size: int = Field(default=5 * 1024 * 1024, alias="SENTINEL_MAX_DIFF_SIZE")
-    max_file_size: int = Field(default=1 * 1024 * 1024, alias="SENTINEL_MAX_FILE_SIZE")
-    max_output_size: int = Field(default=1 * 1024 * 1024, alias="SENTINEL_MAX_OUTPUT_SIZE")
+    sentinel_mode: Literal["gated", "advisory", "strict"] = Field(default="gated")
+    max_retries: int = Field(default=3)
+    max_diff_size: int = Field(default=5 * 1024 * 1024)
+    max_file_size: int = Field(default=1 * 1024 * 1024)
+    max_output_size: int = Field(default=1 * 1024 * 1024)
 
     # Validation
-    validation_timeout: int = Field(default=120, alias="VALIDATION_TIMEOUT")
+    validation_timeout: int = Field(default=120)
 
     # Sandbox / Docker
-    docker_enabled: bool = Field(default=True, alias="DOCKER_ENABLED")
-    sandbox_image: str = Field(default="python:3.12-slim", alias="SANDBOX_IMAGE")
-    sandbox_fallback_enabled: bool = Field(default=False, alias="SANDBOX_FALLBACK_ENABLED")
+    docker_enabled: bool = Field(default=True)
+    sandbox_image: str = Field(default="python:3.12-slim")
+    sandbox_fallback_enabled: bool = Field(default=False)
 
     # JEV
-    jev_api_key: str | None = Field(default=None, alias="JEV_API_KEY")
-    jev_api_url: str | None = Field(default=None, alias="JEV_API_URL")
-    jev_enabled: bool = Field(default=False, alias="JEV_ENABLED")
-    jev_timeout: int = Field(default=30, alias="JEV_TIMEOUT")
+    jev_api_key: str | None = Field(default=None)
+    jev_api_url: str | None = Field(default=None)
+    jev_enabled: bool = Field(default=False)
+    jev_timeout: int = Field(default=30)
 
     # API
-    api_host: str = Field(default="0.0.0.0", alias="API_HOST")
-    api_port: int = Field(default=8000, alias="API_PORT")
-    secret_key: str = Field(default="change-me", alias="SECRET_KEY")
+    api_host: str = Field(default="0.0.0.0")
+    api_port: int = Field(default=8000)
+    secret_key: str = Field(default="change-me")
 
     # Feature flags
     frontend_enabled: bool = Field(default=False)
