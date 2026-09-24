@@ -11,7 +11,8 @@ from sentinel.audit.service import AuditService
 from sentinel.config.settings import Settings, get_settings
 from sentinel.core.models.audit import AuditEventType
 from sentinel.core.models.decision import Decision
-from sentinel.core.models.repository import ChangeSet
+from sentinel.core.models.security import SecurityFinding
+from sentinel.core.models.validation import ValidationResult
 from sentinel.decision.engine import DecisionEngine
 from sentinel.git.repository import GitRepository
 from sentinel.jev.client import JevContextBuilder
@@ -54,7 +55,10 @@ class SentinelService:
         self.audit.log(AuditEventType.REPOSITORY_INSPECTED, {"path": str(repo_path)}, repository_id=repo.id)
 
         changeset = self.git.changeset(repo)
-        self.audit.log(AuditEventType.CHANGE_GENERATED, {"files": len(changeset.changed_files)}, repository_id=repo.id, changeset_id=changeset.id)
+        self.audit.log(
+            AuditEventType.CHANGE_GENERATED, {"files": len(changeset.changed_files)},
+            repository_id=repo.id, changeset_id=changeset.id,
+        )
 
         # Validation
         self.audit.log(AuditEventType.VALIDATION_STARTED, {}, changeset_id=changeset.id)
@@ -64,7 +68,11 @@ class SentinelService:
         # Security
         security_findings = self.security.analyze(changeset)
         for f in security_findings:
-            self.audit.log(AuditEventType.SECURITY_FINDING_CREATED, {"severity": f.severity.value, "category": f.category.value}, changeset_id=changeset.id)
+            self.audit.log(
+                AuditEventType.SECURITY_FINDING_CREATED,
+                {"severity": f.severity.value, "category": f.category.value},
+                changeset_id=changeset.id,
+            )
 
         # JEV
         context_builder = JevContextBuilder()
@@ -81,11 +89,19 @@ class SentinelService:
 
         # Risk
         risk_assessment = self.risk.assess(changeset, validation_results, security_findings, jev_evaluation)
-        self.audit.log(AuditEventType.RISK_ASSESSMENT, {"level": risk_assessment.level.value, "score": risk_assessment.score}, changeset_id=changeset.id)
+        self.audit.log(
+            AuditEventType.RISK_ASSESSMENT,
+            {"level": risk_assessment.level.value, "score": risk_assessment.score},
+            changeset_id=changeset.id,
+        )
 
         # Policy
         policy_evaluation = self.policy.evaluate(changeset, validation_results, security_findings, risk_assessment, jev_evaluation)
-        self.audit.log(AuditEventType.POLICY_EVALUATION, {"action": policy_evaluation.final_action.value if policy_evaluation.final_action else None}, changeset_id=changeset.id)
+        self.audit.log(
+            AuditEventType.POLICY_EVALUATION,
+            {"action": policy_evaluation.final_action.value if policy_evaluation.final_action else None},
+            changeset_id=changeset.id,
+        )
 
         # Decision
         decision = self.decision.decide(
@@ -97,13 +113,19 @@ class SentinelService:
             jev_evaluation_id=jev_evaluation.id,
             risk_assessment_id=risk_assessment.id,
         )
-        self.audit.log(AuditEventType.DECISION_CREATED, {"action": decision.action.value, "reason": decision.reason}, changeset_id=changeset.id, decision_id=decision.id)
+        self.audit.log(
+            AuditEventType.DECISION_CREATED, {"action": decision.action.value, "reason": decision.reason},
+            changeset_id=changeset.id, decision_id=decision.id,
+        )
 
         # Approval if needed
         approval = None
         if decision.action.value == "REQUIRE_HUMAN_REVIEW":
             approval = self.approval.create_request(decision.id, changeset.id, repo.id, reason=decision.reason)
-            self.audit.log(AuditEventType.APPROVAL_REQUESTED, {"approval_id": approval.id}, changeset_id=changeset.id, decision_id=decision.id)
+            self.audit.log(
+                AuditEventType.APPROVAL_REQUESTED, {"approval_id": approval.id},
+                changeset_id=changeset.id, decision_id=decision.id,
+            )
 
         return {
             "repository": repo,
@@ -120,7 +142,11 @@ class SentinelService:
     def verify_sync(self, repo_path: Path | str, task: str | None = None, jev_fixture: str = "high_confidence_safe") -> dict:
         return asyncio.run(self.verify(repo_path, task, jev_fixture))
 
-    def generate_feedback(self, decision: Decision, validation_results, security_findings) -> AgentFeedback:
+    def generate_feedback(
+        self, decision: Decision,
+        validation_results: list[ValidationResult],
+        security_findings: list[SecurityFinding],
+    ) -> AgentFeedback:
         reasons: list[str] = []
         required: list[str] = []
 

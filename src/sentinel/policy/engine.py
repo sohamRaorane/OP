@@ -4,14 +4,20 @@ from __future__ import annotations
 
 import fnmatch
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from sentinel.core.exceptions import PolicyError
-from sentinel.core.models.policy import PolicyAction, PolicyCondition, PolicyEvaluation, PolicyResult, PolicyRule
+from sentinel.core.models.policy import (
+    PolicyAction,
+    PolicyCondition,
+    PolicyEvaluation,
+    PolicyResult,
+    PolicyRule,
+)
 from sentinel.core.models.repository import ChangeSet
 from sentinel.core.models.risk import RiskAssessment
 from sentinel.core.models.security import SecurityFinding
@@ -41,13 +47,36 @@ class PolicyEngine:
 
     def _default_policies(self) -> list[PolicyRule]:
         return [
-            PolicyRule(name="critical_security", when=PolicyCondition(security_severity="CRITICAL"), action=PolicyAction.BLOCK, description="Critical security → BLOCK", precedence=100),
-            PolicyRule(name="high_security_review", when=PolicyCondition(security_severity="HIGH"), action=PolicyAction.REQUIRE_HUMAN_REVIEW, description="High → review", precedence=90),
-            PolicyRule(name="failed_tests", when=PolicyCondition(validation_status="FAIL", validator="pytest"), action=PolicyAction.REVISE, description="Tests fail → revise", precedence=80),
-            PolicyRule(name="build_failure", when=PolicyCondition(validation_status="FAIL", validator="build"), action=PolicyAction.REJECT, description="Build fail → reject", precedence=85),
-            PolicyRule(name="critical_risk", when=PolicyCondition(risk_level="CRITICAL"), action=PolicyAction.BLOCK, description="Critical risk → block", precedence=95),
-            PolicyRule(name="high_risk_review", when=PolicyCondition(risk_level="HIGH"), action=PolicyAction.REQUIRE_HUMAN_REVIEW, description="High risk → review", precedence=88),
-            PolicyRule(name="migration", when=PolicyCondition(migration_detected=True), action=PolicyAction.REQUIRE_HUMAN_REVIEW, description="Migration → review", precedence=87),
+            PolicyRule(
+                name="critical_security", when=PolicyCondition(security_severity="CRITICAL"),
+                action=PolicyAction.BLOCK, description="Critical security → BLOCK", precedence=100,
+            ),
+            PolicyRule(
+                name="high_security_review", when=PolicyCondition(security_severity="HIGH"),
+                action=PolicyAction.REQUIRE_HUMAN_REVIEW, description="High → review", precedence=90,
+            ),
+            PolicyRule(
+                name="failed_tests",
+                when=PolicyCondition(validation_status="FAIL", validator="pytest"),
+                action=PolicyAction.REVISE, description="Tests fail → revise", precedence=80,
+            ),
+            PolicyRule(
+                name="build_failure",
+                when=PolicyCondition(validation_status="FAIL", validator="build"),
+                action=PolicyAction.REJECT, description="Build fail → reject", precedence=85,
+            ),
+            PolicyRule(
+                name="critical_risk", when=PolicyCondition(risk_level="CRITICAL"),
+                action=PolicyAction.BLOCK, description="Critical risk → block", precedence=95,
+            ),
+            PolicyRule(
+                name="high_risk_review", when=PolicyCondition(risk_level="HIGH"),
+                action=PolicyAction.REQUIRE_HUMAN_REVIEW, description="High risk → review", precedence=88,
+            ),
+            PolicyRule(
+                name="migration", when=PolicyCondition(migration_detected=True),
+                action=PolicyAction.REQUIRE_HUMAN_REVIEW, description="Migration → review", precedence=87,
+            ),
         ]
 
     def _load_yaml(self, path: Path) -> list[PolicyRule]:
@@ -69,9 +98,14 @@ class PolicyEngine:
                 try:
                     action = PolicyAction(action_str)
                 except ValueError:
-                    raise PolicyError(f"Invalid action {action_str} for policy {name}")
+                    raise PolicyError(f"Invalid action {action_str} for policy {name}") from None
                 when = PolicyCondition(**{k: v for k, v in when_data.items() if k in PolicyCondition.model_fields})
-                rules.append(PolicyRule(name=name, when=when, action=action, description=cfg.get("description"), precedence=cfg.get("precedence", precedence)))
+                rules.append(
+                    PolicyRule(
+                        name=name, when=when, action=action,
+                        description=cfg.get("description"), precedence=cfg.get("precedence", precedence),
+                    )
+                )
                 precedence -= 1
         # Sort by precedence desc
         rules.sort(key=lambda r: r.precedence, reverse=True)
@@ -124,7 +158,7 @@ class PolicyEngine:
             final_action=final_action,
             trace=trace,
             policy_version=self.VERSION,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         return evaluation
 
@@ -162,15 +196,16 @@ class PolicyEngine:
         if w.file_pattern:
             matched_file = False
             for cf in changeset.changed_files:
-                if fnmatch.fnmatch(cf.path, w.file_pattern) or fnmatch.fnmatch(cf.path, w.file_pattern.lstrip("*")) or w.file_pattern in cf.path:
+                pattern = w.file_pattern
+                if fnmatch.fnmatch(cf.path, pattern) or fnmatch.fnmatch(cf.path, pattern.lstrip("*")) or pattern in cf.path:
                     matched_file = True
                     break
                 # Also try glob match via Path.match
                 try:
-                    if Path(cf.path).match(w.file_pattern):
+                    if Path(cf.path).match(pattern):
                         matched_file = True
                         break
-                except Exception:
+                except Exception:  # noqa: S110 -- invalid glob patterns are non-fatal
                     pass
             if not matched_file:
                 return False, f"no file matches {w.file_pattern}"
@@ -206,6 +241,6 @@ class PolicyEngine:
         # repository
         if w.repository:
             if changeset.repository_id != w.repository and w.repository not in changeset.repository_id:
-                return False, f"repo mismatch"
+                return False, "repo mismatch"
 
         return True, f"matched {rule.name}"

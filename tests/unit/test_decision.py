@@ -1,37 +1,39 @@
 """Decision engine tests — Phase 8."""
 
 import uuid
-from datetime import datetime, timezone
-
-import pytest
+from datetime import UTC, datetime
 
 from sentinel.core.models.decision import DecisionAction
 from sentinel.core.models.policy import PolicyAction, PolicyEvaluation, PolicyResult
-from sentinel.core.models.repository import ChangeSet, ChangedFile, FileChangeType
+from sentinel.core.models.repository import ChangedFile, ChangeSet, FileChangeType
 from sentinel.core.models.risk import RiskAssessment, RiskLevel
 from sentinel.decision.engine import DecisionEngine
 
 
-def make_cs():
+def make_cs() -> ChangeSet:
     return ChangeSet(
         repository_id=str(uuid.uuid4()),
         baseline_commit="a",
         current_commit="b",
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
         changed_files=[ChangedFile(path="a.py", change_type=FileChangeType.MODIFIED)],
         unified_diff="",
     )
 
 
-def make_risk(level):
-    return RiskAssessment(level=level, score=50 if level == RiskLevel.HIGH else 10, factors=[], increasing_signals=[], decreasing_signals=[], deterministic_signals=[], probabilistic_signals=[], evidence=[])
+def make_risk(level: RiskLevel) -> RiskAssessment:
+    return RiskAssessment(
+        level=level, score=50 if level == RiskLevel.HIGH else 10, factors=[],
+        increasing_signals=[], decreasing_signals=[], deterministic_signals=[],
+        probabilistic_signals=[], evidence=[],
+    )
 
 
-def make_policy(action, name="rule"):
+def make_policy(action: PolicyAction, name: str = "rule") -> PolicyEvaluation:
     return PolicyEvaluation(triggered=[PolicyResult(rule_name=name, action=action, matched=True)], final_action=action, trace=[])
 
 
-def test_critical_security_policy_blocks():
+def test_critical_security_policy_blocks() -> None:
     engine = DecisionEngine()
     cs = make_cs()
     risk = make_risk(RiskLevel.CRITICAL)
@@ -41,7 +43,7 @@ def test_critical_security_policy_blocks():
     assert "critical_security" in decision.triggered_policies
 
 
-def test_human_review_policy():
+def test_human_review_policy() -> None:
     engine = DecisionEngine()
     cs = make_cs()
     risk = make_risk(RiskLevel.HIGH)
@@ -50,7 +52,7 @@ def test_human_review_policy():
     assert decision.action == DecisionAction.REQUIRE_HUMAN_REVIEW
 
 
-def test_failed_validation_revise_via_policy():
+def test_failed_validation_revise_via_policy() -> None:
     engine = DecisionEngine()
     cs = make_cs()
     policy = make_policy(PolicyAction.REVISE, "failed_tests")
@@ -58,7 +60,7 @@ def test_failed_validation_revise_via_policy():
     assert decision.action == DecisionAction.REVISE
 
 
-def test_high_risk_requires_review_without_policy():
+def test_high_risk_requires_review_without_policy() -> None:
     engine = DecisionEngine()
     cs = make_cs()
     risk = make_risk(RiskLevel.HIGH)
@@ -66,7 +68,7 @@ def test_high_risk_requires_review_without_policy():
     assert decision.action == DecisionAction.REQUIRE_HUMAN_REVIEW
 
 
-def test_low_risk_accept():
+def test_low_risk_accept() -> None:
     engine = DecisionEngine()
     cs = make_cs()
     risk = make_risk(RiskLevel.LOW)
@@ -74,11 +76,14 @@ def test_low_risk_accept():
     assert decision.action == DecisionAction.ACCEPT
 
 
-def test_decision_contains_evidence_refs():
+def test_decision_contains_evidence_refs() -> None:
     engine = DecisionEngine()
     cs = make_cs()
     risk = make_risk(RiskLevel.LOW)
-    decision = engine.decide(cs, risk=risk, validation_ids=["v1"], security_finding_ids=["s1"], jev_evaluation_id="j1", risk_assessment_id="r1")
+    decision = engine.decide(
+        cs, risk=risk, validation_ids=["v1"], security_finding_ids=["s1"],
+        jev_evaluation_id="j1", risk_assessment_id="r1",
+    )
     assert decision.validation_ids == ["v1"]
     assert decision.security_finding_ids == ["s1"]
     assert decision.jev_evaluation_id == "j1"
@@ -89,7 +94,7 @@ def test_decision_contains_evidence_refs():
     assert decision.id
 
 
-def test_reproducibility_same_evidence_same_decision():
+def test_reproducibility_same_evidence_same_decision() -> None:
     engine = DecisionEngine()
     cs = make_cs()
     risk = make_risk(RiskLevel.MEDIUM)

@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import random
-import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sentinel.core.exceptions import JevMalformedResponseError, JevTimeoutError, JevUnavailableError
 from sentinel.core.models.jev import JevContext, JevDimension, JevEvaluation, JevScore
@@ -148,7 +146,7 @@ class MockJevClient(JevClient):
             id=str(uuid.uuid4()),
             provider="mock",
             model="mock-1.0",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             latency_ms=self.latency_ms,
             scores=scores,
             overall_risk=overall,

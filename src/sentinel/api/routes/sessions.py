@@ -1,7 +1,7 @@
 """Sessions routes — Phase 9."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -28,14 +28,14 @@ class SessionResponse(BaseModel):
 
 
 @router.post("/sessions", response_model=SessionResponse)
-async def create_session(body: CreateSessionRequest):
+async def create_session(body: CreateSessionRequest) -> SessionResponse:
     sid = str(uuid.uuid4())
     session = {
         "id": sid,
         "repository_path": body.repository_path,
         "task": body.task,
         "agent": body.agent,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "status": "active",
     }
     _sessions[sid] = session
@@ -43,7 +43,7 @@ async def create_session(body: CreateSessionRequest):
 
 
 @router.get("/sessions/{session_id}", response_model=SessionResponse)
-async def get_session(session_id: str):
+async def get_session(session_id: str) -> SessionResponse:
     s = _sessions.get(session_id)
     if not s:
         from fastapi import HTTPException
@@ -53,6 +53,6 @@ async def get_session(session_id: str):
 
 
 @router.get("/sessions", response_model=list[SessionResponse])
-async def list_sessions(limit: int = 20, offset: int = 0):
+async def list_sessions(limit: int = 20, offset: int = 0) -> list[SessionResponse]:
     items = list(_sessions.values())[offset : offset + limit]
     return [SessionResponse(**s) for s in items]

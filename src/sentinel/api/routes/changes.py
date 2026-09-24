@@ -1,7 +1,6 @@
 """Changes routes — Phase 12."""
 
 from pathlib import Path
-from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -25,7 +24,7 @@ class VerifyRequest(BaseModel):
 
 
 @router.post("/changes/analyze")
-async def analyze_changes(body: AnalyzeRequest):
+async def analyze_changes(body: AnalyzeRequest) -> dict:
     git = GitRepository()
     try:
         repo = git.discover(Path(body.repository_path))
@@ -36,11 +35,11 @@ async def analyze_changes(body: AnalyzeRequest):
             "diff_hash": changeset.diff_hash,
         }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/changes/verify")
-async def verify_changes(body: VerifyRequest):
+async def verify_changes(body: VerifyRequest) -> dict:
     service = SentinelService()
     try:
         result = await service.verify(body.repository_path, task=body.task, jev_fixture=body.jev_fixture)
@@ -56,11 +55,11 @@ async def verify_changes(body: VerifyRequest):
             "approval": result["approval"].model_dump(mode="json") if result["approval"] else None,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/changes")
-async def list_changes(repository_path: str = Query(...)):
+async def list_changes(repository_path: str = Query(...)) -> dict:
     # For V1, just return current changeset
     git = GitRepository()
     try:
@@ -68,4 +67,4 @@ async def list_changes(repository_path: str = Query(...)):
         cs = git.changeset(repo)
         return {"changeset": cs.model_dump(mode="json")}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e

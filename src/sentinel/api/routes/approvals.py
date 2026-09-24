@@ -24,38 +24,38 @@ class ApprovalDecisionBody(BaseModel):
 
 
 @router.post("/approvals")
-async def create_approval(body: ApprovalRequestBody):
+async def create_approval(body: ApprovalRequestBody) -> dict:
     req = _approval_service.create_request(body.decision_id, body.changeset_id, body.repository_id, body.reason)
-    return req.model_dump(mode="json")
+    return dict(req.model_dump(mode="json"))
 
 
 @router.get("/approvals/{approval_id}")
-async def get_approval(approval_id: str):
+async def get_approval(approval_id: str) -> dict:
     try:
         req = _approval_service.get(approval_id)
-        return req.model_dump(mode="json")
+        return dict(req.model_dump(mode="json"))
     except Exception as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.post("/approvals/{approval_id}/approve")
-async def approve(approval_id: str, body: ApprovalDecisionBody):
+async def approve(approval_id: str, body: ApprovalDecisionBody) -> dict:
     try:
         req = _approval_service.approve(approval_id, body.approver)
-        return req.model_dump(mode="json")
+        return dict(req.model_dump(mode="json"))
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/approvals/{approval_id}/reject")
-async def reject(approval_id: str, body: ApprovalDecisionBody):
+async def reject(approval_id: str, body: ApprovalDecisionBody) -> dict:
     try:
         req = _approval_service.reject(approval_id, body.approver, body.reason)
-        return req.model_dump(mode="json")
+        return dict(req.model_dump(mode="json"))
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get("/approvals")
-async def list_approvals():
+async def list_approvals() -> list[dict]:
     return [_approval_service.get(k).model_dump(mode="json") for k in list(_approval_service._store.keys())]

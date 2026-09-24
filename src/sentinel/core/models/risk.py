@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -44,5 +44,5 @@ class RiskAssessment(BaseModel):
     triggered_policies: list[str] = Field(default_factory=list)
     evidence: list[str] = Field(default_factory=list)
     explanation: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     engine_version: str = Field(default="1.0.0")

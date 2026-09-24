@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -22,7 +22,7 @@ class ValidationResult(BaseModel):
     changeset_id: str | None = Field(default=None)
     validator_name: str = Field(description="e.g. pytest, ruff, mypy")
     command: list[str] = Field(description="Executed command as arg list")
-    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     finished_at: datetime | None = Field(default=None)
     duration_ms: int | None = Field(default=None)
     exit_code: int | None = Field(default=None)

@@ -60,18 +60,29 @@ build-backend = "hatchling.build"
 packages = ["src/sentinel"]
 
 [tool.ruff]
-line-length = 100
+line-length = 140
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "C4", "UP", "S", "TCH", "TID", "Q"]
-ignore = ["S101", "S603", "S607"]  # S603/S607 handled via explicit allowlist
+select = ["E", "F", "I", "B", "C4", "UP", "S", "Q"]
+ignore = [
+  "S101",   # assert allowed in tests
+  "S603",   # subprocess list-args (we use shell=False + allowlist)
+  "S607",   # partial executable path
+  "S105",   # hardcoded password — false positives on enum names like PASS
+  "S104",   # binding 0.0.0.0 — intentional for containerized API
+  "B008",   # function call in default arg (FastAPI Depends pattern)
+]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B017"]  # blind exception asserts are intentional when testing error paths
+
 [tool.mypy]
 python_version = "3.12"
+namespace_packages = false
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

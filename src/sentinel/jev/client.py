@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from sentinel.core.models.jev import JevContext, JevEvaluation
+from sentinel.core.models.repository import ChangeSet
 
 
 class JevClient(ABC):
@@ -27,7 +28,7 @@ class JevContextBuilder:
     def build(
         self,
         task: str | None,
-        changeset,
+        changeset: ChangeSet,
         validation_results: list | None = None,
         security_findings: list | None = None,
         repository_metadata: dict | None = None,

@@ -14,7 +14,7 @@ async def get_request_id(x_request_id: str | None = Header(default=None)) -> str
 
 
 # Simple auth abstraction for V1 (local)
-async def require_auth(authorization: str | None = Header(default=None)):
+async def require_auth(authorization: str | None = Header(default=None)) -> dict:
     settings = get_settings()
     # In development, allow unauthenticated
     if settings.sentinel_env in ("development", "testing"):

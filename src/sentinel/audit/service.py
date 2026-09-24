@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -31,7 +31,7 @@ class AuditService:
     ) -> AuditEvent:
         event = AuditEvent(
             id=str(uuid.uuid4()),
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             actor=actor,
             session_id=session_id,
             repository_id=repository_id,

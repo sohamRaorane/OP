@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 
@@ -43,14 +42,17 @@ class JevDecisionService:
                 # Timeout handling
                 try:
                     evaluation: JevEvaluation = await asyncio.wait_for(self.client.evaluate(context), timeout=self.timeout)
-                except asyncio.TimeoutError as e:
+                except TimeoutError as e:
                     raise JevTimeoutError(f"JEV timeout after {self.timeout}s") from e
 
                 # Validate response
                 if not evaluation.scores:
                     raise JevMalformedResponseError("Empty scores in JEV response")
 
-                logger.info("jev_response", evaluation_id=evaluation.id, overall_risk=evaluation.overall_risk, latency_ms=evaluation.latency_ms)
+                logger.info(
+                    "jev_response", evaluation_id=evaluation.id,
+                    overall_risk=evaluation.overall_risk, latency_ms=evaluation.latency_ms,
+                )
                 evaluation.latency_ms = int((time.monotonic() - start) * 1000)
                 return evaluation
 
@@ -74,7 +76,7 @@ class JevDecisionService:
             mock = MockJevClient(fixture="ambiguous_result")
             try:
                 return await mock.evaluate(context)
-            except Exception:
+            except Exception:  # noqa: S110 -- mock fallback failure falls through to conservative result
                 pass
 
         # If all fails, return a conservative evaluation (high risk) rather than failing open
@@ -84,7 +86,7 @@ class JevDecisionService:
             return JevEvaluation(
                 id=str(uuid.uuid4()),
                 provider="mock-fallback",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
                 latency_ms=int((time.monotonic() - start) * 1000),
                 scores=[],
                 overall_risk=0.7,
@@ -96,7 +98,7 @@ class JevDecisionService:
             return JevEvaluation(
                 id=str(uuid.uuid4()),
                 provider="mock-fallback",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
                 latency_ms=int((time.monotonic() - start) * 1000),
                 scores=[],
                 overall_risk=0.6,

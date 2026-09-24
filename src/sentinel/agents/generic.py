@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 
 from sentinel.agents.base import AgentAdapter, AgentFeedback, AgentSession
-from sentinel.core.exceptions import SentinelError
+from sentinel.core.models.repository import ChangeSet
 from sentinel.git.repository import GitRepository
 
 
@@ -30,9 +30,8 @@ class GenericAgentAdapter(AgentAdapter):
         self.sessions[session.id] = session
         return session
 
-    def get_changes(self, session: AgentSession):
+    def get_changes(self, session: AgentSession) -> ChangeSet:
         # Delegate to GitRepository to get ChangeSet
-        from sentinel.core.models.repository import Repository
 
         repo = self.git.discover(Path(session.repository_path))
         changeset = self.git.changeset(repo)

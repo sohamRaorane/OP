@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from sentinel.core.models.repository import ChangeSet
 from sentinel.core.models.security import SecurityCategory, SecurityFinding, SecuritySeverity
-
 
 # Pre-compiled patterns
 SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
@@ -116,14 +114,20 @@ class SecurityAnalyzer:
         diff = changeset.unified_diff or ""
 
         # Helper to run patterns
-        def check_patterns(patterns, category, severity, explanation, remediation=None):
+        def check_patterns(
+            patterns: list[tuple[re.Pattern[str], str]],
+            category: SecurityCategory,
+            severity: SecuritySeverity,
+            explanation: str,
+            remediation: str | None = None,
+        ) -> None:
             for pat, desc in patterns:
                 for m in pat.finditer(diff):
                     start = m.start()
                     # Estimate file and line from diff context
                     # Find preceding "+++ b/" or "diff --git"
-                    snippet = diff[max(0, start - 200) : start + 200]
-                    file_match = re.search(r"\+\+\+ b/([^\n]+)", diff[:start][::-1])  # crude
+                    diff[max(0, start - 200) : start + 200]
+                    re.search(r"\+\+\+ b/([^\n]+)", diff[:start][::-1])  # crude
                     file = None
                     # Simpler: find last "diff --git" before match
                     last_diff = diff.rfind("diff --git", 0, start)
@@ -136,7 +140,7 @@ class SecurityAnalyzer:
                     line = None
                     try:
                         line = diff[:start].count("\n")
-                    except Exception:
+                    except Exception:  # noqa: S110 -- heuristic; missing line number is fine
                         pass
                     findings.append(
                         _make_finding(
@@ -211,7 +215,11 @@ class SecurityAnalyzer:
         if len(findings) < self.max_findings:
             # Dependencies: check changed files list
             for cf in changeset.changed_files:
-                if cf.path in ["package.json", "requirements.txt", "pyproject.toml", "package-lock.json", "poetry.lock", "Cargo.toml", "go.mod"]:
+                manifest_files = [
+                    "package.json", "requirements.txt", "pyproject.toml",
+                    "package-lock.json", "poetry.lock", "Cargo.toml", "go.mod",
+                ]
+                if cf.path in manifest_files:
                     if cf.change_type.value in ["ADDED", "MODIFIED"]:
                         findings.append(
                             _make_finding(

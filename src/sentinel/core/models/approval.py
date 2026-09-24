@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -32,11 +32,11 @@ class ApprovalRequest(BaseModel):
     approver: str | None = Field(default=None)
     decided_at: datetime | None = Field(default=None)
     expires_at: datetime | None = Field(default=None)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     # For audit trail: history of status changes
     history: list[dict] = Field(default_factory=list)
 
     def is_expired(self) -> bool:
-        if self.expires_at and datetime.now(timezone.utc) > self.expires_at:
+        if self.expires_at and datetime.now(UTC) > self.expires_at:
             return True
         return False

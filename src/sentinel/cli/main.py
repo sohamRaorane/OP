@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -21,7 +20,7 @@ app = typer.Typer(
 console = Console()
 
 # For testability, we keep global settings
-def _print_json(data, pretty: bool = True):
+def _print_json(data: Any, pretty: bool = True) -> None:
     if pretty:
         console.print(JSON.from_data(data))
     else:
@@ -32,7 +31,7 @@ def _print_json(data, pretty: bool = True):
 def init(
     path: str = typer.Option(".", "--path", "-p", help="Path to initialize"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON"),
-):
+) -> None:
     """Initialize Sentinel in a repository."""
     p = Path(path).resolve()
     sentinel_dir = p / ".sentinel"
@@ -62,7 +61,7 @@ def init(
 def inspect(
     repo: str = typer.Option(".", "--repo", "-r", help="Repository path"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON"),
-):
+) -> None:
     """Inspect repository Git state."""
     from sentinel.git.repository import GitRepository
 
@@ -89,14 +88,14 @@ def inspect(
                 console.print(f"Untracked: {snapshot.untracked_files}")
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
 @app.command("status")
 def status(
     repo: str = typer.Option(".", "--repo", "-r", help="Repository path"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON"),
-):
+) -> None:
     """Show repository status and ChangeSet summary."""
     from sentinel.git.repository import GitRepository
 
@@ -129,18 +128,19 @@ def status(
             if changeset.changed_files:
                 console.print("\n[bold]Changed files:[/bold]")
                 for cf in changeset.changed_files:
-                    console.print(f"  {cf.change_type.value:8} {cf.path} (+{cf.additions}/-{cf.deletions}){' [binary]' if cf.is_binary else ''}")
+                    binary_tag = " [binary]" if cf.is_binary else ""
+                    console.print(f"  {cf.change_type.value:8} {cf.path} (+{cf.additions}/-{cf.deletions}){binary_tag}")
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
 @app.command("diff")
 def diff_cmd(
     repo: str = typer.Option(".", "--repo", "-r", help="Repository path"),
-    baseline: Optional[str] = typer.Option(None, "--baseline", help="Baseline commit"),
+    baseline: str | None = typer.Option(None, "--baseline", help="Baseline commit"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON"),
-):
+) -> None:
     """Show unified diff."""
     from sentinel.git.repository import GitRepository
 
@@ -159,7 +159,7 @@ def diff_cmd(
                 console.print("[dim]No changes[/dim]")
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
 @app.command("validate")
@@ -167,7 +167,7 @@ def validate(
     repo: str = typer.Option(".", "--repo", "-r", help="Repository path"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON"),
     use_sandbox: bool = typer.Option(False, "--sandbox", help="Use Docker sandbox"),
-):
+) -> None:
     """Run deterministic validation (pytest, ruff, mypy)."""
     from pathlib import Path as _Path
 
@@ -176,7 +176,9 @@ def validate(
     runner = ValidationRunner()
     repo_path = _Path(repo).resolve()
     # Sandbox optional
-    sandbox = None
+    from sentinel.sandbox.executor import SandboxExecutor
+
+    sandbox: SandboxExecutor | None = None
     if use_sandbox:
         from sentinel.sandbox.executor import DockerSandboxExecutor
 
@@ -199,7 +201,8 @@ def validate(
         table.add_column("Failures", style="red")
         for r in results:
             status_style = "green" if r.status.value == "PASS" else "red" if r.status.value == "FAIL" else "yellow"
-            table.add_row(r.validator_name, f"[{status_style}]{r.status.value}[/{status_style}]", f"{r.duration_ms or 0}ms", "; ".join(r.failures[:2]) if r.failures else "-")
+            failure_text = "; ".join(r.failures[:2]) if r.failures else "-"
+            table.add_row(r.validator_name, f"[{status_style}]{r.status.value}[/{status_style}]", f"{r.duration_ms or 0}ms", failure_text)
         console.print(table)
         # CI exit code: non-zero if any FAIL
         if any(r.status.value in ("FAIL", "TIMEOUT", "ERROR") for r in results):
@@ -210,7 +213,7 @@ def validate(
 def analyze(
     repo: str = typer.Option(".", "--repo", "-r", help="Repository path"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON"),
-):
+) -> None:
     """Run security analysis."""
     from sentinel.git.repository import GitRepository
     from sentinel.security.engine import SecurityAnalyzer
@@ -243,16 +246,16 @@ def analyze(
         raise
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
 @app.command("verify")
 def verify(
     repo: str = typer.Option(".", "--repo", "-r", help="Repository path"),
-    task: Optional[str] = typer.Option(None, "--task", "-t", help="User task description"),
+    task: str | None = typer.Option(None, "--task", "-t", help="User task description"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON"),
     fixture: str = typer.Option("high_confidence_safe", "--fixture", help="JEV fixture for testing"),
-):
+) -> None:
     """Full verification: validation + security + JEV + risk + policy + decision."""
     import asyncio
 
@@ -307,7 +310,11 @@ def verify(
             if pol.triggered:
                 console.print(f"\n[bold]Policy triggered:[/bold] {[r.rule_name for r in pol.triggered if r.matched]}")
             # Decision
-            color = {"ACCEPT": "green", "REVISE": "yellow", "REJECT": "red", "REQUIRE_HUMAN_REVIEW": "magenta", "BLOCK": "red"}.get(decision.action.value, "white")
+            action_colors = {
+                "ACCEPT": "green", "REVISE": "yellow", "REJECT": "red",
+                "REQUIRE_HUMAN_REVIEW": "magenta", "BLOCK": "red",
+            }
+            color = action_colors.get(decision.action.value, "white")
             console.print(f"\n[bold {color}]Decision: {decision.action.value}[/bold {color}]")
             console.print(f"Reason: {decision.reason}")
             if result["approval"]:
@@ -327,15 +334,15 @@ def verify(
         import traceback
 
         traceback.print_exc()
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
 @app.command("rollback")
 def rollback(
     repo: str = typer.Option(".", "--repo", "-r", help="Repository path"),
-    commit: Optional[str] = typer.Option(None, "--commit", help="Commit to rollback to"),
+    commit: str | None = typer.Option(None, "--commit", help="Commit to rollback to"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON"),
-):
+) -> None:
     """Safe rollback of repository changes."""
     from sentinel.git.repository import GitRepository
 
@@ -350,7 +357,7 @@ def rollback(
             console.print(f"[green]Rolled back: {msg['commit']}[/green]")
     except Exception as e:
         console.print(f"[red]Rollback failed: {e}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
 @app.command("history")
@@ -358,7 +365,7 @@ def history(
     repo: str = typer.Option(".", "--repo", "-r", help="Repository path (unused, for compatibility)"),
     limit: int = typer.Option(20, "--limit", help="Number of events"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON"),
-):
+) -> None:
     """Show audit history."""
     try:
         from sentinel.core.db import get_session_factory
@@ -393,11 +400,11 @@ def history(
 def approve_cmd(
     approval_id: str = typer.Argument(..., help="Approval ID"),
     approver: str = typer.Option("admin", "--approver", help="Approver identity"),
-):
+) -> None:
     """Approve a pending decision."""
     from sentinel.approval.service import ApprovalService
 
-    svc = ApprovalService()
+    ApprovalService()
     # For CLI, we use in-memory global — but in real usage, need persistent store.
     # Try to load from shared singleton
     from sentinel.api.routes.approvals import _approval_service
@@ -408,7 +415,7 @@ def approve_cmd(
         console.print(req.model_dump_json(indent=2))
     except Exception as e:
         console.print(f"[red]Approve failed: {e}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
 @app.command("reject")
@@ -416,7 +423,7 @@ def reject_cmd(
     approval_id: str = typer.Argument(..., help="Approval ID"),
     approver: str = typer.Option("admin", "--approver", help="Approver identity"),
     reason: str = typer.Option("", "--reason", help="Reason"),
-):
+) -> None:
     """Reject a pending decision."""
     from sentinel.api.routes.approvals import _approval_service
 
@@ -426,14 +433,14 @@ def reject_cmd(
         console.print(req.model_dump_json(indent=2))
     except Exception as e:
         console.print(f"[red]Reject failed: {e}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
 @app.command("policy")
 def policy_cmd(
     path: str = typer.Option("sentinel.yaml", "--path", help="Policy file path"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON"),
-):
+) -> None:
     """Show loaded policy."""
     from sentinel.policy.engine import PolicyEngine
 
@@ -455,7 +462,7 @@ def policy_cmd(
 @app.command("config")
 def config_cmd(
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON"),
-):
+) -> None:
     """Show current config."""
     from sentinel.config.settings import get_settings
 
@@ -472,7 +479,7 @@ def start(
     host: str = typer.Option("0.0.0.0", "--host", help="Host"),
     port: int = typer.Option(8000, "--port", help="Port"),
     reload: bool = typer.Option(False, "--reload", help="Reload"),
-):
+) -> None:
     """Start API server."""
     import uvicorn
 

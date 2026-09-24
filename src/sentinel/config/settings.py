@@ -64,8 +64,9 @@ class Settings(BaseSettings):
         for p in candidates:
             if p and p.exists():
                 with open(p, encoding="utf-8") as f:
-                    data = yaml.safe_load(f) or {}
-                    return data.get("sentinel", data)
+                    data: dict = yaml.safe_load(f) or {}
+                    overrides = data.get("sentinel", data)
+                    return overrides if isinstance(overrides, dict) else {}
         return {}
 
 

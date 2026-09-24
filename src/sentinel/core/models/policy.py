@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -53,4 +53,4 @@ class PolicyEvaluation(BaseModel):
     final_action: PolicyAction | None = Field(default=None)
     trace: list[str] = Field(default_factory=list)
     policy_version: str = Field(default="1.0.0")
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

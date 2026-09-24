@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -26,7 +27,7 @@ def _commit_file(repo: Path, name: str, content: str, msg: str = "commit") -> No
 
 
 @pytest.fixture
-def tmp_repo():
+def tmp_repo() -> Iterator[Path]:
     with tempfile.TemporaryDirectory() as d:
         p = Path(d)
         _init_repo(p)
@@ -34,25 +35,25 @@ def tmp_repo():
 
 
 @pytest.fixture
-def git_repo():
+def git_repo() -> GitRepository:
     settings = Settings(database_url="sqlite:///:memory:", sentinel_env="testing")
     return GitRepository(settings=settings)
 
 
-def test_discover_valid_repo(tmp_repo, git_repo):
+def test_discover_valid_repo(tmp_repo: Path, git_repo: GitRepository) -> None:
     _commit_file(tmp_repo, "README.md", "# hello")
     repo = git_repo.discover(tmp_repo)
     assert repo.path == str(tmp_repo.resolve())
     assert repo.name == tmp_repo.name
 
 
-def test_discover_invalid_repo(git_repo):
+def test_discover_invalid_repo(git_repo: GitRepository) -> None:
     with tempfile.TemporaryDirectory() as d:
         with pytest.raises(InvalidRepositoryError):
             git_repo.discover(Path(d))
 
 
-def test_empty_repository_changeset(tmp_repo, git_repo):
+def test_empty_repository_changeset(tmp_repo: Path, git_repo: GitRepository) -> None:
     repo = git_repo.discover(tmp_repo)
     cs = git_repo.changeset(repo)
     # Empty repo: no commits, but changeset should be generated without error
@@ -60,7 +61,7 @@ def test_empty_repository_changeset(tmp_repo, git_repo):
     assert cs.changed_files == [] or isinstance(cs.changed_files, list)
 
 
-def test_new_file_detection(tmp_repo, git_repo):
+def test_new_file_detection(tmp_repo: Path, git_repo: GitRepository) -> None:
     _commit_file(tmp_repo, "initial.txt", "init")
     repo = git_repo.discover(tmp_repo)
     (tmp_repo / "newfile.txt").write_text("new content", encoding="utf-8")
@@ -70,7 +71,7 @@ def test_new_file_detection(tmp_repo, git_repo):
     assert any(f.change_type.value == "ADDED" for f in cs.changed_files)
 
 
-def test_modified_file(tmp_repo, git_repo):
+def test_modified_file(tmp_repo: Path, git_repo: GitRepository) -> None:
     _commit_file(tmp_repo, "file.txt", "original")
     repo = git_repo.discover(tmp_repo)
     (tmp_repo / "file.txt").write_text("modified", encoding="utf-8")
@@ -78,7 +79,7 @@ def test_modified_file(tmp_repo, git_repo):
     assert any(f.path == "file.txt" and f.change_type.value == "MODIFIED" for f in cs.changed_files)
 
 
-def test_deleted_file(tmp_repo, git_repo):
+def test_deleted_file(tmp_repo: Path, git_repo: GitRepository) -> None:
     _commit_file(tmp_repo, "todelete.txt", "bye")
     (tmp_repo / "todelete.txt").unlink()
     repo = git_repo.discover(tmp_repo)
@@ -86,7 +87,7 @@ def test_deleted_file(tmp_repo, git_repo):
     assert any(f.path == "todelete.txt" and f.change_type.value == "DELETED" for f in cs.changed_files)
 
 
-def test_renamed_file(tmp_repo, git_repo):
+def test_renamed_file(tmp_repo: Path, git_repo: GitRepository) -> None:
     _commit_file(tmp_repo, "old.txt", "content")
     subprocess.run(["git", "mv", "old.txt", "new.txt"], cwd=tmp_repo, check=True, capture_output=True)
     # Don't commit — test staged rename detection
@@ -97,7 +98,7 @@ def test_renamed_file(tmp_repo, git_repo):
     assert "new.txt" in paths
 
 
-def test_binary_file_detection(tmp_repo, git_repo):
+def test_binary_file_detection(tmp_repo: Path, git_repo: GitRepository) -> None:
     _commit_file(tmp_repo, "init.txt", "init")
     repo = git_repo.discover(tmp_repo)
     # Create binary file with null bytes
@@ -108,7 +109,7 @@ def test_binary_file_detection(tmp_repo, git_repo):
     assert bf.is_binary is True
 
 
-def test_huge_diff_truncation(tmp_repo, git_repo):
+def test_huge_diff_truncation(tmp_repo: Path, git_repo: GitRepository) -> None:
     _commit_file(tmp_repo, "init.txt", "init")
     # Create huge file
     large_content = "x\n" * 100000  # ~200KB
@@ -120,13 +121,13 @@ def test_huge_diff_truncation(tmp_repo, git_repo):
     assert cs.diff_truncated is True or len(cs.unified_diff) <= 1000 + 500  # allow header
 
 
-def test_invalid_repository_path_traversal(git_repo):
+def test_invalid_repository_path_traversal(git_repo: GitRepository) -> None:
     # Try to pass path with null byte
     with pytest.raises((InvalidRepositoryError, PathTraversalError, ValueError)):
-        git_repo.discover(Path("/tmp/\x00bad"))
+        git_repo.discover(Path("/tmp/\x00bad"))  # noqa: S108 -- malicious input fixture
 
 
-def test_malicious_path_in_diff(tmp_repo, git_repo):
+def test_malicious_path_in_diff(tmp_repo: Path, git_repo: GitRepository) -> None:
     _commit_file(tmp_repo, "ok.txt", "ok")
     repo = git_repo.discover(tmp_repo)
     # Manually try to inject malicious baseline
@@ -134,7 +135,7 @@ def test_malicious_path_in_diff(tmp_repo, git_repo):
         git_repo.changeset(repo, baseline="../../../etc/passwd\x00")
 
 
-def test_detached_head(tmp_repo, git_repo):
+def test_detached_head(tmp_repo: Path, git_repo: GitRepository) -> None:
     _commit_file(tmp_repo, "a.txt", "a", msg="first")
     _commit_file(tmp_repo, "b.txt", "b", msg="second")
     # Get first commit hash
@@ -149,7 +150,7 @@ def test_detached_head(tmp_repo, git_repo):
     assert cs.is_detached is True
 
 
-def test_staged_and_unstaged_changes(tmp_repo, git_repo):
+def test_staged_and_unstaged_changes(tmp_repo: Path, git_repo: GitRepository) -> None:
     _commit_file(tmp_repo, "file.txt", "original")
     # Modify and stage
     (tmp_repo / "file.txt").write_text("staged change", encoding="utf-8")
@@ -163,7 +164,7 @@ def test_staged_and_unstaged_changes(tmp_repo, git_repo):
     assert any(f.path == "file.txt" for f in cs.changed_files)
 
 
-def test_changeset_summary_statistics(tmp_repo, git_repo):
+def test_changeset_summary_statistics(tmp_repo: Path, git_repo: GitRepository) -> None:
     _commit_file(tmp_repo, "file.txt", "line1\nline2\n")
     (tmp_repo / "file.txt").write_text("line1\nline2\nline3\n", encoding="utf-8")
     (tmp_repo / "new.txt").write_text("hello\n", encoding="utf-8")
@@ -174,7 +175,7 @@ def test_changeset_summary_statistics(tmp_repo, git_repo):
     assert summary["lines_added"] >= 1
 
 
-def test_safe_git_executor_no_shell_injection(tmp_repo, git_repo):
+def test_safe_git_executor_no_shell_injection(tmp_repo: Path, git_repo: GitRepository) -> None:
     # Ensure executor never uses shell
     from sentinel.git.executor import SafeGitExecutor
 
@@ -187,7 +188,7 @@ def test_safe_git_executor_no_shell_injection(tmp_repo, git_repo):
         executor.run(tmp_repo, "status")  # type: ignore[arg-type]
 
 
-def test_rollback_safe(tmp_repo, git_repo):
+def test_rollback_safe(tmp_repo: Path, git_repo: GitRepository) -> None:
     _commit_file(tmp_repo, "file.txt", "original")
     (tmp_repo / "file.txt").write_text("dirty", encoding="utf-8")
     (tmp_repo / "untracked.txt").write_text("untracked", encoding="utf-8")

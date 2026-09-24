@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 
@@ -29,7 +29,7 @@ class Repository(BaseModel):
     name: str = Field(description="Repository name (directory basename)")
     remote_url: str | None = Field(default=None)
     default_branch: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @field_validator("path")
     @classmethod
@@ -52,7 +52,7 @@ class RepositorySnapshot(BaseModel):
     staged_files: list[str] = Field(default_factory=list)
     unstaged_files: list[str] = Field(default_factory=list)
     untracked_files: list[str] = Field(default_factory=list)
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ChangedFile(BaseModel):
@@ -79,7 +79,7 @@ class ChangeSet(BaseModel):
     current_commit: str | None = Field(description="Current SHA (None if dirty)")
     branch: str | None = Field(default=None)
     is_detached: bool = Field(default=False)
-    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     changed_files: list[ChangedFile] = Field(default_factory=list)
     unified_diff: str = Field(default="", description="Full unified diff (size-limited)")
     diff_truncated: bool = Field(default=False)

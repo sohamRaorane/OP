@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC
+
 import pytest
 
 from sentinel.core.models.jev import JevContext
@@ -10,7 +12,7 @@ from sentinel.jev.service import JevDecisionService
 
 
 @pytest.mark.asyncio
-async def test_mock_jev_high_confidence_safe():
+async def test_mock_jev_high_confidence_safe() -> None:
     client = MockJevClient(fixture="high_confidence_safe")
     ctx = JevContext(task="test", changed_files=["a.py"], relevant_diff="hello")
     eval = await client.evaluate(ctx)
@@ -20,7 +22,7 @@ async def test_mock_jev_high_confidence_safe():
 
 
 @pytest.mark.asyncio
-async def test_mock_jev_security_concern():
+async def test_mock_jev_security_concern() -> None:
     client = MockJevClient(fixture="security_concern")
     ctx = JevContext(task="test", relevant_diff="normal diff")
     eval = await client.evaluate(ctx)
@@ -30,7 +32,7 @@ async def test_mock_jev_security_concern():
 
 
 @pytest.mark.asyncio
-async def test_mock_jev_timeout_simulation():
+async def test_mock_jev_timeout_simulation() -> None:
     client = MockJevClient(should_timeout=True)
     service = JevDecisionService(client=client, timeout=1, max_retries=1)
     ctx = JevContext(task="test")
@@ -40,7 +42,7 @@ async def test_mock_jev_timeout_simulation():
 
 
 @pytest.mark.asyncio
-async def test_mock_jev_unavailable_fallback():
+async def test_mock_jev_unavailable_fallback() -> None:
     client = MockJevClient(should_unavailable=True)
     service = JevDecisionService(client=client, timeout=1, max_retries=1)
     ctx = JevContext(task="test")
@@ -49,7 +51,7 @@ async def test_mock_jev_unavailable_fallback():
 
 
 @pytest.mark.asyncio
-async def test_mock_jev_malformed_handling():
+async def test_mock_jev_malformed_handling() -> None:
     client = MockJevClient(should_malform=True)
     service = JevDecisionService(client=client, timeout=1, max_retries=1)
     ctx = JevContext(task="test")
@@ -58,18 +60,19 @@ async def test_mock_jev_malformed_handling():
 
 
 @pytest.mark.asyncio
-async def test_jev_context_minimization():
-    from sentinel.jev.client import JevContextBuilder
-    from sentinel.core.models.repository import ChangeSet, ChangedFile, FileChangeType
+async def test_jev_context_minimization() -> None:
     import uuid
-    from datetime import datetime, timezone
+    from datetime import datetime
+
+    from sentinel.core.models.repository import ChangedFile, ChangeSet, FileChangeType
+    from sentinel.jev.client import JevContextBuilder
 
     builder = JevContextBuilder()
     cs = ChangeSet(
         repository_id=str(uuid.uuid4()),
         baseline_commit="a",
         current_commit="b",
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
         changed_files=[ChangedFile(path="a.py", change_type=FileChangeType.MODIFIED)],
         unified_diff="x" * 20000,  # huge diff
     )
@@ -80,7 +83,7 @@ async def test_jev_context_minimization():
 
 
 @pytest.mark.asyncio
-async def test_jev_not_directly_deciding_accept():
+async def test_jev_not_directly_deciding_accept() -> None:
     # Ensure JEV result is not directly used to produce ACCEPT/REJECT
     # It must be consumed by risk/decision layers — we test service returns evaluation, not decision
     client = MockJevClient(fixture="high_confidence_safe")

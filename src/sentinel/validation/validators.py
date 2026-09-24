@@ -5,10 +5,9 @@ from __future__ import annotations
 import subprocess
 import time
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-from sentinel.config.settings import Settings, get_settings
 from sentinel.core.models.validation import ValidationResult, ValidationStatus
 
 
@@ -30,7 +29,7 @@ class Validator(ABC):
 
     def validate(self, repo_path: Path, timeout: int = 120, max_output: int = 1_048_576) -> ValidationResult:
         cmd = self.get_command(repo_path)
-        start = datetime.now(timezone.utc)
+        start = datetime.now(UTC)
         start_monotonic = time.monotonic()
         try:
             result = subprocess.run(
@@ -41,7 +40,7 @@ class Validator(ABC):
                 timeout=timeout,
                 shell=False,
             )
-            finished = datetime.now(timezone.utc)
+            finished = datetime.now(UTC)
             stdout = result.stdout or ""
             stderr = result.stderr or ""
             truncated_out = False
@@ -72,7 +71,7 @@ class Validator(ABC):
                 failures=failures,
             )
         except subprocess.TimeoutExpired as e:
-            finished = datetime.now(timezone.utc)
+            finished = datetime.now(UTC)
             stdout = (e.stdout.decode() if isinstance(e.stdout, bytes) else str(e.stdout or ""))[:max_output]
             stderr = (e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr or ""))[:max_output]
             duration = int((time.monotonic() - start_monotonic) * 1000)
@@ -90,7 +89,7 @@ class Validator(ABC):
                 failures=[f"Timeout after {timeout}s"],
             )
         except FileNotFoundError:
-            finished = datetime.now(timezone.utc)
+            finished = datetime.now(UTC)
             return ValidationResult(
                 validator_name=self.name,
                 command=cmd,
@@ -105,7 +104,7 @@ class Validator(ABC):
                 failures=[],
             )
         except Exception as e:
-            finished = datetime.now(timezone.utc)
+            finished = datetime.now(UTC)
             return ValidationResult(
                 validator_name=self.name,
                 command=cmd,
@@ -132,7 +131,15 @@ class PytestValidator(Validator):
     name = "pytest"
 
     def is_applicable(self, repo_path: Path) -> bool:
-        return (repo_path / "pytest.ini").exists() or (repo_path / "pyproject.toml").exists() or (repo_path / "tests").exists() or any(repo_path.glob("test_*.py")) or any(repo_path.glob("*_test.py"))
+        return any(
+            [
+                (repo_path / "pytest.ini").exists(),
+                (repo_path / "pyproject.toml").exists(),
+                (repo_path / "tests").exists(),
+                any(repo_path.glob("test_*.py")),
+                any(repo_path.glob("*_test.py")),
+            ]
+        )
 
     def get_command(self, repo_path: Path) -> list[str]:
         # Prefer python -m pytest

@@ -1,6 +1,5 @@
 """End-to-end integration test — full pipeline."""
 
-import asyncio
 import subprocess
 import tempfile
 from pathlib import Path
@@ -9,10 +8,9 @@ import pytest
 
 from sentinel.config.settings import Settings
 from sentinel.core.service import SentinelService
-from sentinel.git.repository import GitRepository
 
 
-def _init_repo(path: Path):
+def _init_repo(path: Path) -> None:
     subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True)
     subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=path, check=True, capture_output=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=path, check=True, capture_output=True)
@@ -23,7 +21,7 @@ def _init_repo(path: Path):
 
 
 @pytest.mark.asyncio
-async def test_e2e_low_risk_accept():
+async def test_e2e_low_risk_accept() -> None:
     with tempfile.TemporaryDirectory() as d:
         p = Path(d)
         _init_repo(p)
@@ -40,7 +38,7 @@ async def test_e2e_low_risk_accept():
 
 
 @pytest.mark.asyncio
-async def test_e2e_high_risk_block():
+async def test_e2e_high_risk_block() -> None:
     with tempfile.TemporaryDirectory() as d:
         p = Path(d)
         _init_repo(p)
@@ -56,7 +54,7 @@ async def test_e2e_high_risk_block():
 
 
 @pytest.mark.asyncio
-async def test_e2e_verification_pipeline_all_steps():
+async def test_e2e_verification_pipeline_all_steps() -> None:
     with tempfile.TemporaryDirectory() as d:
         p = Path(d)
         _init_repo(p)
@@ -86,12 +84,13 @@ async def test_e2e_verification_pipeline_all_steps():
         assert result["decision"].reason
 
 
-def test_cli_inspect_and_verify():
+def test_cli_inspect_and_verify() -> None:
     with tempfile.TemporaryDirectory() as d:
         p = Path(d)
         _init_repo(p)
         (p / "change.txt").write_text("hello", encoding="utf-8")
         from typer.testing import CliRunner
+
         from sentinel.cli.main import app
 
         runner = CliRunner()

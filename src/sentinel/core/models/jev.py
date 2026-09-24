@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -31,7 +31,7 @@ class JevEvaluation(BaseModel):
     changeset_id: str | None = Field(default=None)
     provider: str = Field(default="mock")
     model: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     latency_ms: int | None = Field(default=None)
     scores: list[JevScore] = Field(default_factory=list)
     overall_risk: float = Field(ge=0.0, le=1.0, default=0.0)

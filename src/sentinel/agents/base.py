@@ -74,7 +74,7 @@ class AgentAdapter(ABC):
         ...
 
     @abstractmethod
-    def get_changes(self, session: AgentSession):
+    def get_changes(self, session: AgentSession) -> None:
         ...
 
     @abstractmethod

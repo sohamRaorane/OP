@@ -27,7 +27,7 @@ class RepoInspectResponse(BaseModel):
 
 
 @router.post("/repositories/inspect", response_model=RepoInspectResponse)
-async def inspect_repo(body: RepoInspectRequest):
+async def inspect_repo(body: RepoInspectRequest) -> RepoInspectResponse:
     git = GitRepository()
     try:
         repo = git.discover(Path(body.path))
@@ -44,4 +44,4 @@ async def inspect_repo(body: RepoInspectRequest):
             is_dirty=snap.is_dirty,
         )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e

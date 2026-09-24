@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -17,13 +18,13 @@ settings = get_settings()
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Startup: init DB if needed
     try:
         from sentinel.core.db import init_db
 
         init_db()
-    except Exception:
+    except Exception:  # noqa: S110 -- DB table creation is best-effort at startup
         pass
     yield
 
@@ -49,7 +50,7 @@ app.add_middleware(
 
 # Request ID middleware
 @app.middleware("http")
-async def add_request_id(request: Request, call_next):
+async def add_request_id(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
     start = time.time()
     response = await call_next(request)
@@ -69,7 +70,7 @@ app.include_router(audit.router, prefix="/api/v1", tags=["audit"])
 
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(
         status_code=500,
         content={"error": "internal_error", "message": str(exc), "request_id": request.headers.get("X-Request-ID", "")},
@@ -77,7 +78,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 @app.get("/", include_in_schema=False)
-async def root():
+async def root() -> dict:
     return {"service": "jev-sentinel", "version": "0.1.0", "docs": "/docs"}
 
 

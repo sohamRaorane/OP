@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import subprocess
-import tempfile
 import time
 import uuid
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -27,7 +25,7 @@ class SandboxResult(BaseModel):
     stderr_truncated: bool = Field(default=False)
     timed_out: bool = Field(default=False)
     oom_killed: bool = Field(default=False)
-    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     finished_at: datetime | None = Field(default=None)
     duration_ms: int | None = Field(default=None)
 
@@ -103,19 +101,19 @@ class DockerSandboxExecutor(SandboxExecutor):
             except OSError:
                 pass
 
-        start = datetime.now(timezone.utc)
-        start_mono = time.monotonic()
+        start = datetime.now(UTC)
+        time.monotonic()
         result = SandboxResult(command=command, started_at=start)
 
         if not self.is_available():
             result.stderr = "Docker unavailable"
-            result.finished_at = datetime.now(timezone.utc)
+            result.finished_at = datetime.now(UTC)
             result.compute_duration()
             raise SandboxError("Docker unavailable — cannot execute in sandbox")
 
         try:
             import docker  # type: ignore[import-untyped]
-            from docker.errors import ImageNotFound, NotFound  # type: ignore[import-untyped]
+            from docker.errors import ImageNotFound  # type: ignore[import-untyped]
 
             client = docker.from_env()
             # Ensure image
@@ -131,10 +129,11 @@ class DockerSandboxExecutor(SandboxExecutor):
             # We mount workdir as /workspace (read-only where possible but need write for tests)
             # For validation we need writable; use delegated mount but isolated.
             # Use explicit env allowlist
-            allowed_env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "PYTHONPATH": "/workspace", "HOME": "/tmp", "LANG": "C.UTF-8"}
+            allowed_env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "PYTHONPATH": "/workspace", "HOME": "/tmp", "LANG": "C.UTF-8"}  # noqa: S108 -- container-internal paths
             if env:
                 # Only allow explicitly permitted keys
-                filtered_env = {k: v for k, v in env.items() if k in allowed_env or k in (self.settings.load_yaml_overrides().get("sandbox", {}).get("allowed_env", []) if hasattr(self.settings, "load_yaml_overrides") else [])}
+                cfg_env: list[str] = self.settings.load_yaml_overrides().get("sandbox", {}).get("allowed_env", [])
+                filtered_env = {k: v for k, v in env.items() if k in allowed_env or k in cfg_env}
                 allowed_env.update(filtered_env)
 
             # Security: never expose host env secrets
@@ -186,7 +185,7 @@ class DockerSandboxExecutor(SandboxExecutor):
                     result.timed_out = True
                     try:
                         container.kill()
-                    except Exception:
+                    except Exception:  # noqa: S110 -- container may already be dead
                         pass
                     result.stderr = f"Container timeout after {timeout}s"
                 else:
@@ -194,7 +193,7 @@ class DockerSandboxExecutor(SandboxExecutor):
             finally:
                 try:
                     container.remove(force=True)
-                except Exception:
+                except Exception:  # noqa: S110 -- best-effort cleanup
                     pass
 
         except SandboxError:
@@ -203,7 +202,7 @@ class DockerSandboxExecutor(SandboxExecutor):
             result.stderr = str(e)
             result.exit_code = None
 
-        result.finished_at = datetime.now(timezone.utc)
+        result.finished_at = datetime.now(UTC)
         result.compute_duration()
         if result.timed_out:
             # Also mark exit_code None
@@ -244,8 +243,8 @@ class SubprocessFallbackExecutor(SandboxExecutor):
             except OSError:
                 pass
 
-        start = datetime.now(timezone.utc)
-        start_mono = time.monotonic()
+        start = datetime.now(UTC)
+        time.monotonic()
         result = SandboxResult(command=command, started_at=start)
         # Filter env — allowlist only
         safe_env = {"PATH": env.get("PATH", "") if env else "", "HOME": str(Path.home()), "LANG": "C.UTF-8"}
@@ -285,6 +284,6 @@ class SubprocessFallbackExecutor(SandboxExecutor):
             result.stderr = str(e)
             result.exit_code = None
 
-        result.finished_at = datetime.now(timezone.utc)
+        result.finished_at = datetime.now(UTC)
         result.compute_duration()
         return result

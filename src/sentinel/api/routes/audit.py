@@ -15,7 +15,7 @@ async def list_audit(
     event_type: str | None = Query(default=None),
     limit: int = Query(default=50, le=200),
     offset: int = Query(default=0),
-):
+) -> list[dict]:
     # Try DB first
     try:
         from sentinel.audit.service import AuditService
@@ -41,7 +41,7 @@ async def list_audit(
 
 
 @router.get("/audit/{event_id}")
-async def get_audit(event_id: str):
+async def get_audit(event_id: str) -> dict:
     try:
         from sentinel.core.db import get_session_factory
         from sentinel.repository.orm import AuditEventORM
@@ -65,4 +65,4 @@ async def get_audit(event_id: str):
     except Exception as e:
         from fastapi import HTTPException
 
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e

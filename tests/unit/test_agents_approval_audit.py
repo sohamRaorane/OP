@@ -1,25 +1,27 @@
 """Tests for Phase 9-11: agents, approval, audit."""
 
-import pytest
-import tempfile
 import subprocess
+import tempfile
 from pathlib import Path
 
-from sentinel.agents.generic import GenericAgentAdapter
+import pytest
+from sqlalchemy import Engine
+
 from sentinel.agents.base import AgentFeedback
+from sentinel.agents.generic import GenericAgentAdapter
 from sentinel.approval.service import ApprovalService
-from sentinel.core.models.approval import ApprovalStatus
 from sentinel.audit.service import AuditService
+from sentinel.core.models.approval import ApprovalStatus
 from sentinel.core.models.audit import AuditEventType
 
 
-def _init_repo(path: Path):
+def _init_repo(path: Path) -> None:
     subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True)
     subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=path, check=True, capture_output=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=path, check=True, capture_output=True)
 
 
-def test_agent_session_lifecycle():
+def test_agent_session_lifecycle() -> None:
     with tempfile.TemporaryDirectory() as d:
         p = Path(d)
         _init_repo(p)
@@ -43,7 +45,7 @@ def test_agent_session_lifecycle():
         adapter.stop_session(session)
 
 
-def test_agent_prevents_infinite_retry():
+def test_agent_prevents_infinite_retry() -> None:
     with tempfile.TemporaryDirectory() as d:
         p = Path(d)
         _init_repo(p)
@@ -54,7 +56,7 @@ def test_agent_prevents_infinite_retry():
         assert adapter.continue_execution(session) is False
 
 
-def test_approval_workflow():
+def test_approval_workflow() -> None:
     svc = ApprovalService(expiration_hours=24)
     req = svc.create_request("dec123", reason="review needed")
     assert req.status == ApprovalStatus.PENDING
@@ -68,7 +70,7 @@ def test_approval_workflow():
         svc.approve(req.id, "bob")
 
 
-def test_approval_reject_and_pending():
+def test_approval_reject_and_pending() -> None:
     svc = ApprovalService()
     req = svc.create_request("dec2")
     svc.reject(req.id, "bob", reason="bad")
@@ -77,7 +79,7 @@ def test_approval_reject_and_pending():
     assert any(h["status"] == "REJECTED" for h in svc.get(req.id).history)
 
 
-def test_approval_cannot_overwrite():
+def test_approval_cannot_overwrite() -> None:
     svc = ApprovalService()
     req = svc.create_request("dec3")
     svc.approve(req.id, "alice")
@@ -85,7 +87,7 @@ def test_approval_cannot_overwrite():
         svc.reject(req.id, "bob")
 
 
-def test_audit_immutable_log():
+def test_audit_immutable_log() -> None:
     svc = AuditService()
     evt = svc.log(AuditEventType.SESSION_CREATED, {"foo": "bar"}, actor="tester", repository_id="r1")
     assert evt.id
@@ -94,27 +96,25 @@ def test_audit_immutable_log():
     assert evt.timestamp
 
 
-def test_audit_query_filtering():
-    svc = AuditService()
+def test_audit_query_filtering() -> None:
+    AuditService()
     # Use DB fallback: test in-memory query via DB session if available
     try:
-        from sentinel.core.db import get_session_factory, init_db
         from sentinel.config.settings import Settings
 
-        settings = Settings(database_url="sqlite:///:memory:", sentinel_env="testing")
+        Settings(database_url="sqlite:///:memory:", sentinel_env="testing")
         # monkey patch
         import sentinel.core.db as dbmod
 
         orig = dbmod.get_engine
 
-        def mock_engine():
+        def mock_engine() -> Engine:
             from sqlalchemy import create_engine
 
             return create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
 
         dbmod.get_engine = mock_engine
         from sentinel.core.db import Base
-        from sentinel.repository.orm import AuditEventORM, RepositoryORM
 
         engine = mock_engine()
         Base.metadata.create_all(bind=engine)

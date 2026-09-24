@@ -13,12 +13,12 @@ from sentinel.validation.engine import ValidationRunner
 
 
 @pytest.fixture
-def runner():
+def runner() -> ValidationRunner:
     s = Settings(database_url="sqlite:///:memory:", sentinel_env="testing")
     return ValidationRunner(settings=s)
 
 
-def test_discover_python_project(runner):
+def test_discover_python_project(runner: ValidationRunner) -> None:
     with tempfile.TemporaryDirectory() as d:
         p = Path(d)
         (p / "test_example.py").write_text("def test_x(): assert 1==1\n")
@@ -27,7 +27,7 @@ def test_discover_python_project(runner):
         assert "pytest" in names or "ruff" in names
 
 
-def test_detect_project_type(runner):
+def test_detect_project_type(runner: ValidationRunner) -> None:
     with tempfile.TemporaryDirectory() as d:
         p = Path(d)
         (p / "pyproject.toml").write_text("[tool.pytest]\n")
@@ -39,9 +39,8 @@ def test_detect_project_type(runner):
             assert runner.detect_project_type(p2) == "node"
 
 
-def test_allowlist_blocks_arbitrary_command():
-    from sentinel.validation.engine import ValidationRunner, DEFAULT_ALLOWLIST
-    from sentinel.validation.validators import CommandValidator
+def test_allowlist_blocks_arbitrary_command() -> None:
+    from sentinel.validation.engine import ValidationRunner
 
     s = Settings(database_url="sqlite:///:memory:", sentinel_env="testing")
     runner = ValidationRunner(settings=s, allowlist={"pytest"})  # only pytest allowed
@@ -57,7 +56,7 @@ def test_allowlist_blocks_arbitrary_command():
         assert "allowlist" in results[0].stderr.lower()
 
 
-def test_validation_run_records_metadata(runner):
+def test_validation_run_records_metadata(runner: ValidationRunner) -> None:
     with tempfile.TemporaryDirectory() as d:
         p = Path(d)
         (p / "test_ok.py").write_text("def test_ok(): assert True\n")
@@ -71,9 +70,10 @@ def test_validation_run_records_metadata(runner):
             assert r.timeout_seconds > 0
 
 
-def test_timeout_handling():
-    from sentinel.validation.validators import Validator
+def test_timeout_handling() -> None:
     from pathlib import Path as _P
+
+    from sentinel.validation.validators import Validator
 
     class SleepValidator(Validator):
         name = "sleep"
@@ -93,7 +93,7 @@ def test_timeout_handling():
         assert results[0].status == ValidationStatus.TIMEOUT
 
 
-def test_output_limits():
+def test_output_limits() -> None:
     from sentinel.validation.validators import Validator
 
     class BigOutputValidator(Validator):

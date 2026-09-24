@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -41,4 +41,4 @@ class SecurityFinding(BaseModel):
     explanation: str
     remediation: str | None = Field(default=None)
     confidence: float = Field(ge=0.0, le=1.0, default=0.8)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

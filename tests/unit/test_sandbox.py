@@ -1,14 +1,15 @@
 """Sandbox tests — Phase 3."""
 
-import pytest
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
+import pytest
 
 from sentinel.config.settings import Settings
-from sentinel.sandbox.executor import SubprocessFallbackExecutor, DockerSandboxExecutor
+from sentinel.sandbox.executor import DockerSandboxExecutor, SubprocessFallbackExecutor
 
 
-def test_subprocess_fallback_success():
+def test_subprocess_fallback_success() -> None:
     s = Settings(database_url="sqlite:///:memory:", sentinel_env="development", sandbox_fallback_enabled=True)
     executor = SubprocessFallbackExecutor(settings=s)
     with tempfile.TemporaryDirectory() as d:
@@ -19,7 +20,7 @@ def test_subprocess_fallback_success():
         assert result.timed_out is False
 
 
-def test_subprocess_fallback_timeout():
+def test_subprocess_fallback_timeout() -> None:
     s = Settings(database_url="sqlite:///:memory:", sentinel_env="development", sandbox_fallback_enabled=True)
     executor = SubprocessFallbackExecutor(settings=s)
     with tempfile.TemporaryDirectory() as d:
@@ -28,7 +29,7 @@ def test_subprocess_fallback_timeout():
         assert result.timed_out is True
 
 
-def test_subprocess_fallback_denies_dangerous_command():
+def test_subprocess_fallback_denies_dangerous_command() -> None:
     s = Settings(database_url="sqlite:///:memory:", sentinel_env="development", sandbox_fallback_enabled=True)
     executor = SubprocessFallbackExecutor(settings=s)
     with tempfile.TemporaryDirectory() as d:
@@ -37,7 +38,7 @@ def test_subprocess_fallback_denies_dangerous_command():
             executor.execute(["rm", "-rf", "/"], workdir=p)
 
 
-def test_subprocess_fallback_disabled_in_production():
+def test_subprocess_fallback_disabled_in_production() -> None:
     s = Settings(database_url="sqlite:///:memory:", sentinel_env="production", sandbox_fallback_enabled=False)
     executor = SubprocessFallbackExecutor(settings=s)
     assert executor.is_available() is False
@@ -47,7 +48,7 @@ def test_subprocess_fallback_disabled_in_production():
             executor.execute(["python", "-c", "print(1)"], workdir=p)
 
 
-def test_docker_unavailable_handling():
+def test_docker_unavailable_handling() -> None:
     s = Settings(database_url="sqlite:///:memory:", sentinel_env="testing")
     executor = DockerSandboxExecutor(settings=s)
     # If docker not running, is_available should be False or execute should raise SandboxError
@@ -62,7 +63,7 @@ def test_docker_unavailable_handling():
         pytest.skip("Docker available — skipping unavailable test")
 
 
-def test_sensitive_mount_denied():
+def test_sensitive_mount_denied() -> None:
     s = Settings(database_url="sqlite:///:memory:", sentinel_env="development", sandbox_fallback_enabled=True)
     executor = SubprocessFallbackExecutor(settings=s)
     # Try to execute in sensitive path (home .ssh)

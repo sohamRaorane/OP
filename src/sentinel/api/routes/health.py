@@ -13,12 +13,12 @@ class HealthResponse(BaseModel):
 
 
 @router.get("/health")
-async def health():
+async def health() -> HealthResponse:
     return HealthResponse(status="ok", mode="gated")
 
 
 @router.get("/readiness")
-async def readiness():
+async def readiness() -> dict:
     # Check DB connectivity
     try:
         from sentinel.core.db import get_engine

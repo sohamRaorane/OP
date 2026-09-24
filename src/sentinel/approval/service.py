@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import uuid
-from datetime import datetime, timedelta, timezone
-
-from sqlalchemy.orm import Session
+from datetime import UTC, datetime, timedelta
 
 from sentinel.core.exceptions import ApprovalError
 from sentinel.core.models.approval import ApprovalRequest, ApprovalStatus
@@ -29,7 +26,7 @@ class ApprovalService:
         reason: str = "Human review required",
         requested_by: str | None = None,
     ) -> ApprovalRequest:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         req = ApprovalRequest(
             id=str(uuid.uuid4()),
             decision_id=decision_id,
@@ -53,7 +50,7 @@ class ApprovalService:
         # Check expiration
         if req.status == ApprovalStatus.PENDING and req.is_expired():
             req.status = ApprovalStatus.EXPIRED
-            req.history.append({"status": "EXPIRED", "at": datetime.now(timezone.utc).isoformat(), "actor": "system"})
+            req.history.append({"status": "EXPIRED", "at": datetime.now(UTC).isoformat(), "actor": "system"})
         return req
 
     def approve(self, approval_id: str, approver: str) -> ApprovalRequest:
@@ -65,7 +62,7 @@ class ApprovalService:
             raise ApprovalError(f"Approval {approval_id} expired")
         req.status = ApprovalStatus.APPROVED
         req.approver = approver
-        req.decided_at = datetime.now(timezone.utc)
+        req.decided_at = datetime.now(UTC)
         req.history.append({"status": "APPROVED", "at": req.decided_at.isoformat(), "actor": approver})
         # Immutable: never overwrite history, only append
         return req
@@ -79,7 +76,7 @@ class ApprovalService:
             raise ApprovalError(f"Approval {approval_id} expired")
         req.status = ApprovalStatus.REJECTED
         req.approver = approver
-        req.decided_at = datetime.now(timezone.utc)
+        req.decided_at = datetime.now(UTC)
         req.history.append({"status": "REJECTED", "at": req.decided_at.isoformat(), "actor": approver, "reason": reason})
         return req
 

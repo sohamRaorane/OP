@@ -2,22 +2,25 @@
 
 from __future__ import annotations
 
-import hashlib
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sentinel.config.settings import Settings, get_settings
 from sentinel.core.exceptions import (
-    DiffTooLargeError,
     GitCommandError,
     InvalidRepositoryError,
     PathTraversalError,
 )
 from sentinel.core.interfaces.repository import RepositoryProvider
-from sentinel.core.models.repository import ChangedFile, ChangeSet, FileChangeType, Repository, RepositorySnapshot
+from sentinel.core.models.repository import (
+    ChangedFile,
+    ChangeSet,
+    FileChangeType,
+    Repository,
+    RepositorySnapshot,
+)
 from sentinel.git.executor import SafeGitExecutor
-
 
 # Map git status codes to FileChangeType
 _STATUS_MAP: dict[str, FileChangeType] = {
@@ -240,7 +243,7 @@ class GitRepository(RepositoryProvider):
             current_commit=head,
             branch=branch,
             is_detached=is_detached,
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
             changed_files=changed_files,
             unified_diff=unified_diff,
             diff_truncated=truncated,
@@ -258,8 +261,6 @@ class GitRepository(RepositoryProvider):
         # Use git status porcelain to capture working tree changes (including untracked)
         # Plus git diff for committed changes
         # First: git diff --name-status with renames
-        diff_args_base: list[str] = ["diff", "--name-status", "--find-renames", "-M", "--diff-filter=ADMRCTUXB"]
-        numstat_args: list[str] = ["diff", "--numstat", "--find-renames", "-M"]
 
         # Determine diff target
         if head is None:
@@ -290,7 +291,10 @@ class GitRepository(RepositoryProvider):
 
         # 1. diff HEAD
         try:
-            r = self.executor.run(repo_path, ["diff", "HEAD", "--name-status", "--find-renames", "-M", "--diff-filter=ADMRCTUXB"], check=False)
+            r = self.executor.run(
+                repo_path, ["diff", "HEAD", "--name-status", "--find-renames", "-M", "--diff-filter=ADMRCTUXB"],
+                check=False,
+            )
             if r.returncode == 0:
                 for line in r.stdout.splitlines():
                     if line.strip():
@@ -304,7 +308,10 @@ class GitRepository(RepositoryProvider):
             if r.returncode == 0 and r.stdout:
                 for fname in r.stdout.split("\x00"):
                     if fname and fname not in changed:
-                        changed[fname] = ChangedFile(path=fname, change_type=FileChangeType.ADDED, is_binary=self._check_binary(repo_path, fname))
+                        changed[fname] = ChangedFile(
+                            path=fname, change_type=FileChangeType.ADDED,
+                            is_binary=self._check_binary(repo_path, fname),
+                        )
         except GitCommandError:
             pass
 

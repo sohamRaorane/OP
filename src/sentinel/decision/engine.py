@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sentinel.core.models.decision import Decision, DecisionAction
 from sentinel.core.models.policy import PolicyAction, PolicyEvaluation
 from sentinel.core.models.repository import ChangeSet
 from sentinel.core.models.risk import RiskAssessment, RiskLevel
-from sentinel.core.models.security import SecuritySeverity
 
 
 class DecisionEngine:
@@ -40,39 +39,40 @@ class DecisionEngine:
         security_finding_ids = security_finding_ids or []
         trace: list[str] = []
         triggered_policies = [r.rule_name for r in (policy_evaluation.triggered if policy_evaluation else []) if r.matched]
+        rest = (
+            risk, triggered_policies, trace, validation_ids, security_finding_ids,
+            jev_evaluation_id, risk_assessment_id, policy_evaluation,
+        )
 
         # 1. Policy-driven decisions take precedence (deterministic)
         if policy_evaluation and policy_evaluation.final_action:
-            action_map: dict[PolicyAction, DecisionAction] = {
-                PolicyAction.BLOCK: DecisionAction.BLOCK,
-                PolicyAction.REQUIRE_HUMAN_REVIEW: DecisionAction.REQUIRE_HUMAN_REVIEW,
-                PolicyAction.REJECT: DecisionAction.REJECT,
-                PolicyAction.REVISE: DecisionAction.REVISE,
-                PolicyAction.ACCEPT: DecisionAction.ACCEPT,
-            }
             final = policy_evaluation.final_action
             # Document precedence
             trace.append(f"Policy final_action={final.value} from {triggered_policies}")
             # CRITICAL / BLOCK always wins
             if final == PolicyAction.BLOCK:
                 return self._make_decision(
-                    changeset, DecisionAction.BLOCK, f"Blocked by policy: {triggered_policies[0] if triggered_policies else 'critical'}",
-                    risk, triggered_policies, trace, validation_ids, security_finding_ids, jev_evaluation_id, risk_assessment_id, policy_evaluation,
+                    changeset, DecisionAction.BLOCK,
+                    f"Blocked by policy: {triggered_policies[0] if triggered_policies else 'critical'}",
+                    *rest,
                 )
             if final == PolicyAction.REQUIRE_HUMAN_REVIEW:
                 return self._make_decision(
-                    changeset, DecisionAction.REQUIRE_HUMAN_REVIEW, f"Human review required by policy: {triggered_policies[0] if triggered_policies else 'policy'}",
-                    risk, triggered_policies, trace, validation_ids, security_finding_ids, jev_evaluation_id, risk_assessment_id, policy_evaluation,
+                    changeset, DecisionAction.REQUIRE_HUMAN_REVIEW,
+                    f"Human review required by policy: {triggered_policies[0] if triggered_policies else 'policy'}",
+                    *rest,
                 )
             if final == PolicyAction.REJECT:
                 return self._make_decision(
-                    changeset, DecisionAction.REJECT, f"Rejected by policy: {triggered_policies[0] if triggered_policies else 'policy'}",
-                    risk, triggered_policies, trace, validation_ids, security_finding_ids, jev_evaluation_id, risk_assessment_id, policy_evaluation,
+                    changeset, DecisionAction.REJECT,
+                    f"Rejected by policy: {triggered_policies[0] if triggered_policies else 'policy'}",
+                    *rest,
                 )
             if final == PolicyAction.REVISE:
                 return self._make_decision(
-                    changeset, DecisionAction.REVISE, f"Revision required by policy: {triggered_policies[0] if triggered_policies else 'policy'}",
-                    risk, triggered_policies, trace, validation_ids, security_finding_ids, jev_evaluation_id, risk_assessment_id, policy_evaluation,
+                    changeset, DecisionAction.REVISE,
+                    f"Revision required by policy: {triggered_policies[0] if triggered_policies else 'policy'}",
+                    *rest,
                 )
             if final == PolicyAction.ACCEPT:
                 # Still check risk overrides? For now accept if policy says accept and no higher risk
@@ -85,29 +85,30 @@ class DecisionEngine:
             if risk.level == RiskLevel.CRITICAL:
                 return self._make_decision(
                     changeset, DecisionAction.BLOCK, f"Critical risk ({risk.score:.1f}): {risk.evidence[:1]}",
-                    risk, triggered_policies, trace, validation_ids, security_finding_ids, jev_evaluation_id, risk_assessment_id, policy_evaluation,
+                    *rest,
                 )
             if risk.level == RiskLevel.HIGH:
                 return self._make_decision(
-                    changeset, DecisionAction.REQUIRE_HUMAN_REVIEW, f"High risk ({risk.score:.1f}): {risk.evidence[:2]}",
-                    risk, triggered_policies, trace, validation_ids, security_finding_ids, jev_evaluation_id, risk_assessment_id, policy_evaluation,
+                    changeset, DecisionAction.REQUIRE_HUMAN_REVIEW,
+                    f"High risk ({risk.score:.1f}): {risk.evidence[:2]}",
+                    *rest,
                 )
             if risk.level == RiskLevel.MEDIUM:
                 return self._make_decision(
                     changeset, DecisionAction.REVISE, f"Medium risk ({risk.score:.1f}): review suggested",
-                    risk, triggered_policies, trace, validation_ids, security_finding_ids, jev_evaluation_id, risk_assessment_id, policy_evaluation,
+                    *rest,
                 )
             # LOW → ACCEPT
             return self._make_decision(
                 changeset, DecisionAction.ACCEPT, f"Low risk ({risk.score:.1f}): accepted",
-                risk, triggered_policies, trace, validation_ids, security_finding_ids, jev_evaluation_id, risk_assessment_id, policy_evaluation,
+                *rest,
             )
 
         # 3. Default accept if nothing else
         trace.append("No risk/policy signal → default ACCEPT")
         return self._make_decision(
             changeset, DecisionAction.ACCEPT, "No blocking signals — accepted",
-            risk, triggered_policies, trace, validation_ids, security_finding_ids, jev_evaluation_id, risk_assessment_id, policy_evaluation,
+            *rest,
         )
 
     def _make_decision(
@@ -138,6 +139,6 @@ class DecisionEngine:
             triggered_policies=triggered_policies,
             engine_version=self.VERSION,
             policy_version=policy_evaluation.policy_version if policy_evaluation else "1.0.0",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             trace=trace,
         )

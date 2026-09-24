@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sentinel.sandbox.executor import SandboxExecutor
 
 from sentinel.config.settings import Settings, get_settings
 from sentinel.core.models.validation import ValidationResult
-from sentinel.validation.validators import AVAILABLE_VALIDATORS, FUTURE_VALIDATORS, CommandValidator, Validator
-
+from sentinel.validation.validators import (
+    AVAILABLE_VALIDATORS,
+    FUTURE_VALIDATORS,
+    CommandValidator,
+    Validator,
+)
 
 # Allowlist — never execute arbitrary repo commands without policy
 DEFAULT_ALLOWLIST: set[str] = {
@@ -46,7 +54,7 @@ class ValidationRunner:
 
     def discover(self, repo_path: Path) -> list[Validator]:
         validators: list[Validator] = []
-        for name, cls in AVAILABLE_VALIDATORS.items():
+        for _name, cls in AVAILABLE_VALIDATORS.items():
             v = cls()
             if v.is_applicable(repo_path):
                 validators.append(v)
@@ -78,7 +86,7 @@ class ValidationRunner:
         validators: list[Validator] | None = None,
         timeout: int | None = None,
         use_sandbox: bool = False,
-        sandbox_executor=None,
+        sandbox_executor: SandboxExecutor | None = None,
     ) -> list[ValidationResult]:
         timeout = timeout or self.settings.validation_timeout
         validators = validators or self.discover(repo_path)
@@ -111,6 +119,11 @@ class ValidationRunner:
                     status = ValidationStatus.TIMEOUT
                 if result.oom_killed:
                     status = ValidationStatus.ERROR
+                failures = (
+                    v.parse_failures(result.stdout, result.stderr, result.exit_code or 0)
+                    if status == ValidationStatus.FAIL
+                    else []
+                )
                 results.append(
                     ValidationResult(
                         validator_name=v.name,
@@ -123,7 +136,7 @@ class ValidationRunner:
                         stderr=result.stderr,
                         timeout_seconds=timeout,
                         status=status,
-                        failures=v.parse_failures(result.stdout, result.stderr, result.exit_code or 0) if status == ValidationStatus.FAIL else [],
+                        failures=failures,
                     )
                 )
             else:
