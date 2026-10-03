@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 import uuid
@@ -178,7 +179,12 @@ class DockerSandboxExecutor(SandboxExecutor):
                 result.stderr = err_logs
                 result.stdout_truncated = stdout_trunc
                 result.stderr_truncated = stderr_trunc
-                result.oom_killed = exit_info.get("Error", "") == "OOMKilled" or "oom" in str(exit_info).lower()
+                # Docker reports OOM in container state, not in the wait() payload
+                try:
+                    container.reload()
+                    result.oom_killed = bool(container.attrs.get("State", {}).get("OOMKilled", False))
+                except Exception:  # noqa: S110 -- best-effort; state may be unavailable after removal
+                    result.oom_killed = False
             except Exception as e:
                 # Timeout or other
                 if "timeout" in str(e).lower():
@@ -246,12 +252,16 @@ class SubprocessFallbackExecutor(SandboxExecutor):
         start = datetime.now(UTC)
         time.monotonic()
         result = SandboxResult(command=command, started_at=start)
-        # Filter env — allowlist only
-        safe_env = {"PATH": env.get("PATH", "") if env else "", "HOME": str(Path.home()), "LANG": "C.UTF-8"}
+        # Filter env — allowlist only. PATH must never be empty: an empty PATH
+        # makes the child unable to resolve executables (broke on Linux where
+        # an unset caller env produced PATH="" and every command "failed").
+        safe_env: dict[str, str] = {"HOME": str(Path.home()), "LANG": "C.UTF-8"}
         if env:
             for k, v in env.items():
                 if k in ["PATH", "PYTHONPATH", "HOME", "LANG", "VIRTUAL_ENV"]:
                     safe_env[k] = v
+        if not safe_env.get("PATH"):
+            safe_env["PATH"] = os.environ.get("PATH", "")
 
         try:
             proc = subprocess.run(

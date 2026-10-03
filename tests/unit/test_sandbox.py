@@ -1,7 +1,9 @@
 """Sandbox tests — Phase 3."""
 
+import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -71,3 +73,46 @@ def test_sensitive_mount_denied() -> None:
     if sensitive.exists():
         with pytest.raises(Exception):
             executor.execute(["python", "-c", "print(1)"], workdir=sensitive, timeout=5)
+
+
+def test_fallback_env_never_has_empty_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression: caller env=None used to produce PATH='' which broke every command on Linux."""
+    captured: dict[str, dict[str, str] | None] = {}
+    real_run = subprocess.run
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        captured["env"] = kwargs.get("env")
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr("sentinel.sandbox.executor.subprocess.run", spy)
+
+    s = Settings(database_url="sqlite:///:memory:", sentinel_env="development", sandbox_fallback_enabled=True)
+    executor = SubprocessFallbackExecutor(settings=s)
+    with tempfile.TemporaryDirectory() as d:
+        executor.execute(["python", "-c", "print('x')"], workdir=Path(d), timeout=10)
+
+    env = captured.get("env")
+    assert env is not None, "fallback must pass an explicit env"
+    assert env.get("PATH"), "PATH must never be empty — child cannot resolve executables"
+    assert env.get("HOME"), "HOME must be set"
+
+
+def test_fallback_empty_caller_path_falls_back_to_system(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Caller explicitly passing PATH='' must still fall back to the host PATH."""
+    captured: dict[str, dict[str, str] | None] = {}
+    real_run = subprocess.run
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        captured["env"] = kwargs.get("env")
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr("sentinel.sandbox.executor.subprocess.run", spy)
+
+    s = Settings(database_url="sqlite:///:memory:", sentinel_env="development", sandbox_fallback_enabled=True)
+    executor = SubprocessFallbackExecutor(settings=s)
+    with tempfile.TemporaryDirectory() as d:
+        executor.execute(["python", "-c", "print('x')"], workdir=Path(d), timeout=10, env={"PATH": ""})
+
+    env = captured.get("env")
+    assert env is not None
+    assert env.get("PATH"), "explicitly empty caller PATH must fall back to os.environ PATH"

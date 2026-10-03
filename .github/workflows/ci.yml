@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Ruff
+        run: ruff check .
+      - name: Mypy
+        run: mypy src tests
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Configure git identity (test repos commit)
+        run: |
+          git config --global user.name "JEV CI"
+          git config --global user.email "ci@jev-sentinel.local"
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Pytest (coverage gate — ratchet: 63 now, 70 by Phase 3, 80 by Phase 7)
+        run: pytest --cov-fail-under=63
