@@ -7,6 +7,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from sentinel.core.models.repository import ChangeSet
+
 
 class AgentAction(str, Enum):
     START = "START"
@@ -74,7 +76,7 @@ class AgentAdapter(ABC):
         ...
 
     @abstractmethod
-    def get_changes(self, session: AgentSession) -> None:
+    def get_changes(self, session: AgentSession) -> ChangeSet:
         ...
 
     @abstractmethod

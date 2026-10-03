@@ -88,6 +88,7 @@ async def test_evaluate_maps_answers_to_scores() -> None:
     assert by_dim[JevDimension.REGRESSION_RISK].confidence == pytest.approx(0.5)
     assert 0.0 <= evaluation.overall_risk <= 1.0
     assert "cost" in (evaluation.summary or "")
+    assert evaluation.raw_response is not None
     assert evaluation.raw_response["usage"]["cost"] == 0.00002
 
 

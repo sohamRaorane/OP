@@ -79,6 +79,7 @@ convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["B017"]  # blind exception asserts are intentional when testing error paths
+"alembic/versions/**" = ["Q000"]  # autogenerate emits single quotes in op calls (generator-side)
 
 [tool.mypy]
 python_version = "3.12"

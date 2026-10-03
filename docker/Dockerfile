@@ -16,11 +16,13 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 # Copy rest of app
 COPY sentinel.yaml ./
-COPY alembic ./alembic 2>/dev/null || true
+COPY alembic.ini ./
+COPY alembic ./alembic
 
 EXPOSE 8000
 
 ENV SENTINEL_ENV=production
 ENV PYTHONPATH=/app/src
 
-CMD ["uvicorn", "sentinel.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Apply migrations before serving; exit if they fail (no silent schema drift)
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn sentinel.api.main:app --host 0.0.0.0 --port 8000"]
