@@ -33,8 +33,11 @@ class Settings(BaseSettings):
 
     # Sandbox / Docker
     docker_enabled: bool = Field(default=True)
-    sandbox_image: str = Field(default="python:3.12-slim")
+    sandbox_image: str = Field(default="jev-sentinel-sandbox:latest")
     sandbox_fallback_enabled: bool = Field(default=False)
+    # Where snapshot copies are written (set to a shared volume path when the
+    # API runs in a container so the Docker daemon can mount them).
+    snapshot_dir: str | None = Field(default=None)
 
     # JEV
     jev_api_key: str | None = Field(default=None)

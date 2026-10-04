@@ -34,6 +34,18 @@ DEFAULT_ALLOWLIST: set[str] = {
 }
 
 
+def _sandbox_command(name: str, cmd: list[str]) -> list[str]:
+    """Append flags so validators work on a read-only mounted snapshot."""
+    if name == "pytest":
+        # no cacheprovider writes, no coverage/html writes from addopts
+        return [*cmd, "-p", "no:cacheprovider", "-o", "addopts="]
+    if name == "ruff":
+        return [*cmd, "--no-cache"]
+    if name == "mypy":
+        return [*cmd, "--cache-dir", "/tmp/mypy_cache"]  # noqa: S108 -- container-internal path
+    return cmd
+
+
 def _is_command_allowed(cmd: list[str], allowlist: set[str]) -> bool:
     joined = " ".join(cmd)
     for allowed in allowlist:
@@ -109,10 +121,14 @@ class ValidationRunner:
                 )
                 continue
             if use_sandbox and sandbox_executor:
-                # Defer to sandbox
-                result = sandbox_executor.execute(cmd, workdir=repo_path, timeout=timeout)
-                # Convert sandbox result to ValidationResult
+                # Defer to sandbox — snapshot must be mounted read-only by the executor
                 from sentinel.core.models.validation import ValidationStatus
+
+                sandbox_cmd = _sandbox_command(v.name, cmd)
+                sandbox_env: dict[str, str] = {"PYTHONDONTWRITEBYTECODE": "1"}
+                if (repo_path / "src").is_dir():
+                    sandbox_env["PYTHONPATH"] = "/workspace/src:/workspace"
+                result = sandbox_executor.execute(sandbox_cmd, workdir=repo_path, timeout=timeout, env=sandbox_env)
 
                 status = ValidationStatus.PASS if result.exit_code == 0 else ValidationStatus.FAIL
                 if result.timed_out:
@@ -127,7 +143,7 @@ class ValidationRunner:
                 results.append(
                     ValidationResult(
                         validator_name=v.name,
-                        command=cmd,
+                        command=sandbox_cmd,
                         started_at=result.started_at,
                         finished_at=result.finished_at,
                         duration_ms=result.duration_ms,

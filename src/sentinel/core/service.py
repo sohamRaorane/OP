@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
+import tempfile
 from pathlib import Path
 
 import structlog
@@ -12,9 +14,9 @@ from sentinel.approval.service import ApprovalService
 from sentinel.audit.service import AuditService
 from sentinel.config.settings import Settings, get_settings
 from sentinel.core.models.audit import AuditEventType
-from sentinel.core.models.decision import Decision
-from sentinel.core.models.security import SecurityFinding
-from sentinel.core.models.validation import ValidationResult
+from sentinel.core.models.decision import Decision, DecisionAction
+from sentinel.core.models.security import SecurityFinding, SecuritySeverity
+from sentinel.core.models.validation import ValidationResult, ValidationStatus
 from sentinel.decision.engine import DecisionEngine
 from sentinel.git.repository import GitRepository
 from sentinel.jev.client import JevClient, JevContextBuilder
@@ -23,6 +25,7 @@ from sentinel.jev.openrouter import OpenRouterJevClient
 from sentinel.jev.service import JevDecisionService
 from sentinel.policy.engine import PolicyEngine
 from sentinel.risk.engine import RiskEngine
+from sentinel.sandbox.executor import DockerSandboxExecutor
 from sentinel.security.engine import SecurityAnalyzer
 from sentinel.validation.engine import ValidationRunner
 
@@ -60,13 +63,91 @@ class SentinelService:
             logger.warning("jev_enabled_without_key", fallback="mock")
         return MockJevClient()
 
+    def _run_validation_sandboxed(self, repo_path: Path) -> tuple[list[ValidationResult], bool, str]:
+        """Run validators ONLY inside Docker on a throwaway snapshot of the scannable set.
+
+        Never falls back to host execution. Returns (results, executed, skip_reason).
+        """
+        s = self.settings
+        if not s.docker_enabled:
+            return [], False, "validation not executed: DOCKER_ENABLED=false"
+        sandbox = DockerSandboxExecutor(settings=s)
+        if not sandbox.is_available():
+            return [], False, "validation not executed: Docker unavailable"
+        snapshot_base = Path(s.snapshot_dir) if s.snapshot_dir else Path(tempfile.gettempdir())
+        snapshot: Path | None = None
+        try:
+            snapshot_base.mkdir(parents=True, exist_ok=True)
+            snapshot = Path(tempfile.mkdtemp(prefix="jev-snapshot-", dir=snapshot_base))
+            self.git.export_snapshot(repo_path, snapshot)
+            results = self.validation.run(snapshot, use_sandbox=True, sandbox_executor=sandbox)
+            return results, True, ""
+        except Exception as e:
+            return [], False, f"validation not executed: {e}"
+        finally:
+            if snapshot is not None:
+                shutil.rmtree(snapshot, ignore_errors=True)
+
+    @staticmethod
+    def _skipped_result(name: str, reason: str) -> ValidationResult:
+        return ValidationResult(
+            validator_name=name,
+            command=[],
+            status=ValidationStatus.SKIPPED,
+            stderr=reason,
+        )
+
+    def _apply_safety_guards(
+        self,
+        decision: Decision,
+        *,
+        validation_executed: bool,
+        validation_skip_reason: str,
+        critical_count: int,
+        changeset_id: str,
+    ) -> Decision:
+        """No incomplete verification ever ends in ACCEPT (fail-closed)."""
+        if critical_count and decision.action != DecisionAction.BLOCK:
+            decision = decision.model_copy(
+                update={
+                    "action": DecisionAction.BLOCK,
+                    "reason": f"Critical security findings ({critical_count}) — execution skipped, blocked",
+                }
+            )
+            self.audit.log(
+                AuditEventType.DECISION_OVERRIDDEN,
+                {"action": decision.action.value, "reason": decision.reason, "guard": "critical_security"},
+                changeset_id=changeset_id, decision_id=decision.id,
+            )
+            return decision
+        if not validation_executed and decision.action in (
+            DecisionAction.ACCEPT, DecisionAction.REVISE, DecisionAction.REJECT,
+        ):
+            decision = decision.model_copy(
+                update={
+                    "action": DecisionAction.REQUIRE_HUMAN_REVIEW,
+                    "reason": validation_skip_reason or "validation not executed",
+                }
+            )
+            self.audit.log(
+                AuditEventType.DECISION_OVERRIDDEN,
+                {"action": decision.action.value, "reason": decision.reason, "guard": "validation_not_executed"},
+                changeset_id=changeset_id, decision_id=decision.id,
+            )
+        return decision
+
     async def verify(
         self,
         repo_path: Path | str,
         task: str | None = None,
         jev_fixture: str = "high_confidence_safe",
     ) -> dict:
-        """Full verification pipeline — returns all artifacts."""
+        """Full verification pipeline — scan → gate → execute → decide.
+
+        Ordering is a security property: nothing from the repo executes unless
+        the security scan already ran and did not find CRITICAL, and execution
+        only ever happens inside the Docker sandbox on a throwaway snapshot.
+        """
         repo_path = Path(repo_path).resolve()
         if isinstance(self.jev_client, MockJevClient):
             self.jev_client.set_fixture(jev_fixture)
@@ -81,12 +162,7 @@ class SentinelService:
             repository_id=repo.id, changeset_id=changeset.id,
         )
 
-        # Validation
-        self.audit.log(AuditEventType.VALIDATION_STARTED, {}, changeset_id=changeset.id)
-        validation_results = self.validation.run(repo_path)
-        self.audit.log(AuditEventType.VALIDATION_COMPLETED, {"count": len(validation_results)}, changeset_id=changeset.id)
-
-        # Security
+        # 1) SCAN — security runs before anything executes
         security_findings = self.security.analyze(changeset)
         for f in security_findings:
             self.audit.log(
@@ -94,6 +170,28 @@ class SentinelService:
                 {"severity": f.severity.value, "category": f.category.value},
                 changeset_id=changeset.id,
             )
+        critical_findings = [f for f in security_findings if f.severity == SecuritySeverity.CRITICAL]
+
+        # 2) GATE + 3) EXECUTE — sandbox-only, snapshot-only
+        self.audit.log(AuditEventType.VALIDATION_STARTED, {}, changeset_id=changeset.id)
+        if critical_findings:
+            validation_results = [
+                self._skipped_result(
+                    "security_gate",
+                    f"validation skipped: {len(critical_findings)} CRITICAL security finding(s)",
+                )
+            ]
+            validation_executed = False
+            validation_skip_reason = "validation not executed: blocked by CRITICAL security findings"
+        else:
+            validation_results, validation_executed, validation_skip_reason = await asyncio.to_thread(
+                self._run_validation_sandboxed, repo_path
+            )
+        self.audit.log(
+            AuditEventType.VALIDATION_COMPLETED,
+            {"count": len(validation_results), "executed": validation_executed},
+            changeset_id=changeset.id,
+        )
 
         # JEV
         context_builder = JevContextBuilder()
@@ -137,6 +235,15 @@ class SentinelService:
         self.audit.log(
             AuditEventType.DECISION_CREATED, {"action": decision.action.value, "reason": decision.reason},
             changeset_id=changeset.id, decision_id=decision.id,
+        )
+
+        # Safety guards — incomplete verification can never ACCEPT
+        decision = self._apply_safety_guards(
+            decision,
+            validation_executed=validation_executed,
+            validation_skip_reason=validation_skip_reason,
+            critical_count=len(critical_findings),
+            changeset_id=changeset.id,
         )
 
         # Approval if needed

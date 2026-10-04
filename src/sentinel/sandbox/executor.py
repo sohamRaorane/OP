@@ -117,20 +117,27 @@ class DockerSandboxExecutor(SandboxExecutor):
             from docker.errors import ImageNotFound  # type: ignore[import-untyped]
 
             client = docker.from_env()
-            # Ensure image
+            # Ensure image — local first, pull second; never silently substitute another image
             try:
                 client.images.get(self.image)
             except ImageNotFound:
                 try:
                     client.images.pull(self.image)
                 except Exception as e:
-                    raise SandboxError(f"Image missing and pull failed: {e}") from e
+                    raise SandboxError(
+                        f"Sandbox image '{self.image}' not available locally and pull failed: {e}. "
+                        f"Build it with: docker build -f docker/sandbox.Dockerfile -t {self.image} ."
+                    ) from e
 
-            # Create temp workspace and copy? For simplicity mount read-only plus writable /tmp
-            # We mount workdir as /workspace (read-only where possible but need write for tests)
-            # For validation we need writable; use delegated mount but isolated.
-            # Use explicit env allowlist
-            allowed_env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "PYTHONPATH": "/workspace", "HOME": "/tmp", "LANG": "C.UTF-8"}  # noqa: S108 -- container-internal paths
+            # Read-only workspace + writable tmpfs /tmp: agent code cannot touch the
+            # real repo, drop all capabilities, run as unprivileged user.
+            allowed_env = {
+                "PATH": "/usr/local/bin:/usr/bin:/bin",  # noqa: S108 -- container-internal path
+                "PYTHONPATH": "/workspace/src:/workspace",
+                "HOME": "/tmp",  # noqa: S108 -- container-internal path (tmpfs)
+                "LANG": "C.UTF-8",
+                "PYTHONDONTWRITEBYTECODE": "1",
+            }
             if env:
                 # Only allow explicitly permitted keys
                 cfg_env: list[str] = self.settings.load_yaml_overrides().get("sandbox", {}).get("allowed_env", [])
@@ -148,12 +155,17 @@ class DockerSandboxExecutor(SandboxExecutor):
                 image=self.image,
                 command=command,
                 working_dir="/workspace",
-                volumes={str(resolved): {"bind": "/workspace", "mode": "rw"}},
+                volumes={str(resolved): {"bind": "/workspace", "mode": "ro"}},
                 environment=allowed_env,
                 network_disabled=self.network_disabled,
                 mem_limit=self.memory_limit,
                 nano_cpus=int(self.cpu_limit * 1_000_000_000),
                 pids_limit=128,
+                user="1000:1000",
+                cap_drop=["ALL"],
+                security_opt=["no-new-privileges"],
+                read_only=True,
+                tmpfs={"/tmp": "size=256m"},  # noqa: S108 -- container-internal tmpfs
                 detach=True,
                 auto_remove=False,
                 stdout=True,

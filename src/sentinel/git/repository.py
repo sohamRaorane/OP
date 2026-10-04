@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -61,6 +62,37 @@ class GitRepository(RepositoryProvider):
     def __init__(self, settings: Settings | None = None, executor: SafeGitExecutor | None = None) -> None:
         self.settings = settings or get_settings()
         self.executor = executor or SafeGitExecutor()
+
+    # ------------------------------------------------------------------ snapshot export
+    def snapshot_file_list(self, repo_path: Path) -> list[str]:
+        """Tracked + untracked non-ignored files — gitignored files are excluded by design.
+
+        This is the scan set AND the execute set: a file Sentinel never saw must
+        never run (closes the gitignored-conftest.py detection bypass).
+        """
+        result = self.executor.run(
+            repo_path,
+            ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            check=True,
+        )
+        return [f for f in result.stdout.split("\0") if f]
+
+    def export_snapshot(self, repo_path: Path, dest: Path) -> list[str]:
+        """Copy the scannable file set to dest — no .git, no symlinks, no ignored files."""
+        copied: list[str] = []
+        dest.mkdir(parents=True, exist_ok=True)
+        for rel in self.snapshot_file_list(repo_path):
+            src = repo_path / rel
+            try:
+                if src.is_symlink() or not src.is_file():
+                    continue
+                target = dest / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, target)
+                copied.append(rel)
+            except OSError:
+                continue
+        return copied
 
     # ------------------------------------------------------------------ discovery
     def is_valid(self, path: Path) -> bool:

@@ -22,6 +22,7 @@ class AuditEventType(str, Enum):
     RISK_ASSESSMENT = "risk_assessment"
     POLICY_EVALUATION = "policy_evaluation"
     DECISION_CREATED = "decision_created"
+    DECISION_OVERRIDDEN = "decision_overridden"
     APPROVAL_REQUESTED = "approval_requested"
     APPROVAL_GRANTED = "approval_granted"
     APPROVAL_REJECTED = "approval_rejected"

@@ -11,11 +11,16 @@ services:
       LOG_LEVEL: INFO
       SENTINEL_MODE: gated
       DOCKER_ENABLED: "true"
+      SANDBOX_IMAGE: jev-sentinel-sandbox:latest
+      # Snapshots must resolve to the SAME path on the host — the docker daemon
+      # mounts them into sandbox containers by host path
+      SNAPSHOT_DIR: ${SNAPSHOT_HOST_DIR:-/var/lib/jev-snapshots}
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ${SNAPSHOT_HOST_DIR:-/var/lib/jev-snapshots}:${SNAPSHOT_HOST_DIR:-/var/lib/jev-snapshots}
     restart: unless-stopped
 
   db:
@@ -34,8 +39,9 @@ services:
       timeout: 5s
       retries: 5
 
-  # Validation sandbox uses ephemeral containers — no persistent service needed.
-  # Image is pulled on demand: python:3.12-slim, node:20-slim etc.
+  # Validation sandbox runs as ephemeral containers created via the socket.
+  # Build the tooled sandbox image once (tools are baked in, network is off at runtime):
+  #   docker build -f docker/sandbox.Dockerfile -t jev-sentinel-sandbox:latest .
 
 volumes:
   postgres_data:
